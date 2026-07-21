@@ -3,8 +3,1277 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-// Domain models will be added as each FEPPM module is implemented.
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrganizationType {
+  GOVERNMENT
+  NGO
+  PRIVATE
+  DONOR
+  RESEARCH
+  VENDOR
+  OTHER
+}
+
+enum AdministrativeUnitType {
+  NATIONAL
+  ZONE
+  REGION
+  STATE
+  LGA
+  DISTRICT
+  WARD
+  OTHER
+}
+
+enum FacilityType {
+  PRIMARY_HEALTH_CENTRE
+  GENERAL_HOSPITAL
+  TEACHING_HOSPITAL
+  SPECIALIST_HOSPITAL
+  LABORATORY
+  WAREHOUSE
+  HEALTH_POST
+  OTHER
+}
+
+enum OwnershipType {
+  FEDERAL
+  STATE
+  LGA
+  PRIVATE
+  NGO
+  FAITH_BASED
+  OTHER
+}
+
+enum EquipmentFunctionalityStatus {
+  FUNCTIONAL
+  PARTIALLY_FUNCTIONAL
+  NON_FUNCTIONAL
+  UNDER_REPAIR
+  DECOMMISSIONED
+  UNKNOWN
+}
+
+enum EquipmentConditionStatus {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  CRITICAL
+  UNKNOWN
+}
+
+enum EvidenceRequirement {
+  NONE
+  OPTIONAL
+  REQUIRED
+}
+
+enum ChecklistInputType {
+  CHECKBOX
+  YES_NO
+  PASS_FAIL
+  NUMBER
+  TEMPERATURE
+  HUMIDITY
+  DATE
+  TIME
+  SHORT_TEXT
+  LONG_TEXT
+  DROPDOWN
+  MULTI_SELECT
+  PHOTO
+  MULTIPLE_PHOTOS
+  SIGNATURE
+  GPS_CONFIRMATION
+}
+
+enum FrequencyType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SIX_MONTHLY
+  ANNUAL
+  CUSTOM
+}
+
+enum TaskStatus {
+  UPCOMING
+  DUE
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETED_ON_TIME
+  COMPLETED_LATE
+  OVERDUE
+  MISSED
+  WAIVED
+  NOT_APPLICABLE
+  CANCELLED
+}
+
+enum CompletionClassification {
+  ON_TIME
+  WITHIN_GRACE_PERIOD
+  LATE
+  MISSED
+  WAIVED
+  NOT_APPLICABLE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum DeliveryChannel {
+  IN_APP
+  PUSH
+  EMAIL
+  SMS
+}
+
+enum TicketStatus {
+  OPEN
+  ACKNOWLEDGED
+  ASSIGNED
+  IN_PROGRESS
+  AWAITING_PARTS
+  RESOLVED
+  VERIFIED
+  CLOSED
+  REOPENED
+  CANCELLED
+}
+
+enum TicketSourceType {
+  FAILED_CHECKLIST
+  ABNORMAL_READING
+  USER_REPORT
+  SUPERVISOR_OBSERVATION
+  SCHEDULED_INSPECTION
+  SYSTEM_ALERT
+}
+
+enum VerificationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  FLAGGED
+}
+
+enum RewardTransactionType {
+  CREDIT
+  PENALTY
+  REDEMPTION
+  ADJUSTMENT
+}
+
+enum RewardRedemptionStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+enum PilotGroupType {
+  INTERVENTION
+  COMPARISON
+  OBSERVATION
+}
+
+enum MeasurementType {
+  BASELINE
+  MONTHLY
+  MIDLINE
+  ENDLINE
+  FOLLOW_UP
+}
+
+enum FeedbackStatus {
+  OPEN
+  IN_REVIEW
+  ASSIGNED
+  RESOLVED
+  CLOSED
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+}
+
+model Country {
+  id                  String               @id @default(cuid())
+  name                String
+  isoCode             String               @unique
+  timezone            String               @default("Africa/Lagos")
+  currencyCode        String               @default("NGN")
+  organizations       Organization[]
+  administrativeUnits AdministrativeUnit[]
+  facilities          Facility[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Organization {
+  id                  String               @id @default(cuid())
+  countryId           String
+  name                String
+  code                String?
+  type                OrganizationType
+  status              RecordStatus         @default(ACTIVE)
+  country             Country              @relation(fields: [countryId], references: [id])
+  users               User[]
+  administrativeUnits AdministrativeUnit[]
+  facilities          Facility[]
+  simulationSessions  SimulationSession[]
+  pilots              PilotProject[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([countryId, name])
+  @@index([countryId, status])
+}
+
+model AdministrativeUnit {
+  id             String                 @id @default(cuid())
+  organizationId String
+  countryId      String
+  parentId       String?
+  name           String
+  code           String?
+  type           AdministrativeUnitType
+  timezone       String?
+  status         RecordStatus           @default(ACTIVE)
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  country        Country                @relation(fields: [countryId], references: [id])
+  parent         AdministrativeUnit?    @relation("AdministrativeTree", fields: [parentId], references: [id])
+  children       AdministrativeUnit[]   @relation("AdministrativeTree")
+  facilities     Facility[]
+  userScopes     UserScope[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([organizationId, type])
+  @@index([parentId])
+}
+
+model Facility {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  countryId            String
+  administrativeUnitId String
+  managerUserId        String?
+  name                 String
+  facilityCode         String?
+  facilityType         FacilityType
+  ownershipType        OwnershipType?
+  address              String?
+  latitude             Decimal?             @db.Decimal(10, 7)
+  longitude            Decimal?             @db.Decimal(10, 7)
+  geofenceRadiusMeters Int                  @default(250)
+  contactPhone         String?
+  contactEmail         String?
+  timezone             String               @default("Africa/Lagos")
+  status               RecordStatus         @default(ACTIVE)
+  organization         Organization         @relation(fields: [organizationId], references: [id])
+  country              Country              @relation(fields: [countryId], references: [id])
+  administrativeUnit   AdministrativeUnit   @relation(fields: [administrativeUnitId], references: [id])
+  manager              User?                @relation("FacilityManager", fields: [managerUserId], references: [id])
+  departments          FacilityDepartment[]
+  equipment            Equipment[]
+  users                User[]
+  tasks                MaintenanceTask[]
+  alerts               Alert[]
+  tickets              MaintenanceTicket[]
+  evidence             EvidenceFile[]
+  complianceSnapshots  ComplianceSnapshot[]
+  pilotFacilities      PilotFacility[]
+  feedback             FeedbackSubmission[]
+  costRecords          CostRecord[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@unique([organizationId, facilityCode])
+  @@index([administrativeUnitId])
+  @@index([status])
+}
+
+model FacilityDepartment {
+  id            String       @id @default(cuid())
+  facilityId    String
+  managerUserId String?
+  name          String
+  code          String?
+  status        RecordStatus @default(ACTIVE)
+  facility      Facility     @relation(fields: [facilityId], references: [id])
+  manager       User?        @relation("DepartmentManager", fields: [managerUserId], references: [id])
+  equipment     Equipment[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([facilityId, name])
+}
+
+model User {
+  id                  String                @id @default(cuid())
+  organizationId      String
+  facilityId          String?
+  firstName           String
+  lastName            String
+  email               String                @unique
+  phone               String?
+  passwordHash        String
+  status              RecordStatus          @default(ACTIVE)
+  lastLoginAt         DateTime?
+  organization        Organization          @relation(fields: [organizationId], references: [id])
+  facility            Facility?             @relation(fields: [facilityId], references: [id])
+  roles               UserRole[]
+  scopes              UserScope[]
+  managedFacilities   Facility[]            @relation("FacilityManager")
+  managedDepartments  FacilityDepartment[]  @relation("DepartmentManager")
+  assignedSchedules   MaintenanceSchedule[] @relation("AssignedScheduleUser")
+  assignedTasks       MaintenanceTask[]     @relation("AssignedTaskUser")
+  completedTasks      MaintenanceTask[]     @relation("CompletedTaskUser")
+  evidence            EvidenceFile[]
+  reportedTickets     MaintenanceTicket[]   @relation("TicketReporter")
+  assignedTickets     MaintenanceTicket[]   @relation("AssignedTechnician")
+  alertRecipients     AlertRecipient[]
+  registeredDevices   RegisteredDevice[]
+  rewardAccount       RewardAccount?
+  badges              UserBadge[]
+  trainingEnrollments CourseEnrollment[]
+  feedback            FeedbackSubmission[]
+  auditLogs           AuditLog[]
+  simulationSessions  SimulationSession[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([organizationId, status])
+  @@index([facilityId])
+}
+
+model Role {
+  id          String                @id @default(cuid())
+  key         String                @unique
+  name        String                @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+  schedules   MaintenanceSchedule[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+}
+
+model UserScope {
+  id                   String             @id @default(cuid())
+  userId               String
+  administrativeUnitId String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  administrativeUnit   AdministrativeUnit @relation(fields: [administrativeUnitId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+
+  @@unique([userId, administrativeUnitId])
+}
+
+model EquipmentCategory {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  description String?
+  types       EquipmentType[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model EquipmentType {
+  id                      String              @id @default(cuid())
+  categoryId              String
+  name                    String
+  description             String?
+  expectedUsefulLifeYears Int?
+  category                EquipmentCategory   @relation(fields: [categoryId], references: [id])
+  models                  EquipmentModel[]
+  equipment               Equipment[]
+  sops                    Sop[]
+  checklistTemplates      ChecklistTemplate[]
+  courses                 LearningCourse[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([categoryId, name])
+}
+
+model Manufacturer {
+  id           String           @id @default(cuid())
+  name         String           @unique
+  countryName  String?
+  contactEmail String?
+  contactPhone String?
+  models       EquipmentModel[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model EquipmentModel {
+  id              String        @id @default(cuid())
+  manufacturerId  String
+  equipmentTypeId String
+  modelName       String
+  technicalSpecs  Json?
+  manufacturer    Manufacturer  @relation(fields: [manufacturerId], references: [id])
+  equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+  equipment       Equipment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([manufacturerId, modelName])
+}
+
+model Vendor {
+  id           String        @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  status       RecordStatus  @default(ACTIVE)
+  equipment    Equipment[]
+  partnerships Partnership[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Equipment {
+  id                  String                       @id @default(cuid())
+  facilityId          String
+  departmentId        String?
+  equipmentTypeId     String
+  equipmentModelId    String?
+  vendorId            String?
+  assetCode           String
+  serialNumber        String?
+  yearOfManufacture   Int?
+  installationDate    DateTime?
+  commissioningDate   DateTime?
+  powerSource         String?
+  functionalityStatus EquipmentFunctionalityStatus @default(UNKNOWN)
+  conditionStatus     EquipmentConditionStatus     @default(UNKNOWN)
+  warrantyStartDate   DateTime?
+  warrantyEndDate     DateTime?
+  expectedEndOfLife   DateTime?
+  purchaseCost        Decimal?                     @db.Decimal(14, 2)
+  replacementCost     Decimal?                     @db.Decimal(14, 2)
+  latitude            Decimal?                     @db.Decimal(10, 7)
+  longitude           Decimal?                     @db.Decimal(10, 7)
+  status              RecordStatus                 @default(ACTIVE)
+  facility            Facility                     @relation(fields: [facilityId], references: [id])
+  department          FacilityDepartment?          @relation(fields: [departmentId], references: [id])
+  equipmentType       EquipmentType                @relation(fields: [equipmentTypeId], references: [id])
+  equipmentModel      EquipmentModel?              @relation(fields: [equipmentModelId], references: [id])
+  vendor              Vendor?                      @relation(fields: [vendorId], references: [id])
+  documents           EquipmentDocument[]
+  statusHistory       EquipmentStatusHistory[]
+  schedules           MaintenanceSchedule[]
+  tasks               MaintenanceTask[]
+  evidence            EvidenceFile[]
+  alerts              Alert[]
+  tickets             MaintenanceTicket[]
+  performanceMetrics  EquipmentPerformanceMetric[]
+  feedback            FeedbackSubmission[]
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@unique([facilityId, assetCode])
+  @@index([equipmentTypeId])
+  @@index([functionalityStatus])
+  @@index([warrantyEndDate])
+}
+
+model EquipmentStatusHistory {
+  id             String                        @id @default(cuid())
+  equipmentId    String
+  previousStatus EquipmentFunctionalityStatus?
+  newStatus      EquipmentFunctionalityStatus
+  reason         String?
+  changedById    String
+  changedAt      DateTime                      @default(now())
+  equipment      Equipment                     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId, changedAt])
+}
+
+model EquipmentDocument {
+  id          String    @id @default(cuid())
+  equipmentId String
+  title       String
+  fileUrl     String
+  fileType    String?
+  description String?
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+}
+
+model Sop {
+  id                 String              @id @default(cuid())
+  equipmentTypeId    String
+  title              String
+  version            String
+  description        String?
+  effectiveDate      DateTime?
+  status             RecordStatus        @default(ACTIVE)
+  createdById        String
+  approvedById       String?
+  equipmentType      EquipmentType       @relation(fields: [equipmentTypeId], references: [id])
+  resources          SopResource[]
+  checklistTemplates ChecklistTemplate[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([equipmentTypeId, title, version])
+}
+
+model SopResource {
+  id           String   @id @default(cuid())
+  sopId        String
+  title        String
+  resourceUrl  String
+  resourceType String
+  sop          Sop      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+}
+
+model ChecklistTemplate {
+  id                       String                @id @default(cuid())
+  equipmentTypeId          String
+  sopId                    String?
+  name                     String
+  version                  String
+  frequencyType            FrequencyType
+  customCronExpression     String?
+  estimatedDurationMinutes Int?
+  status                   RecordStatus          @default(ACTIVE)
+  equipmentType            EquipmentType         @relation(fields: [equipmentTypeId], references: [id])
+  sop                      Sop?                  @relation(fields: [sopId], references: [id])
+  items                    ChecklistItem[]
+  schedules                MaintenanceSchedule[]
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  @@unique([equipmentTypeId, name, version])
+}
+
+model ChecklistItem {
+  id                  String                @id @default(cuid())
+  checklistTemplateId String
+  title               String
+  instruction         String?
+  correctiveAction    String?
+  inputType           ChecklistInputType
+  isRequired          Boolean               @default(true)
+  evidenceRequirement EvidenceRequirement   @default(NONE)
+  technicianOnly      Boolean               @default(false)
+  sequenceOrder       Int
+  weight              Decimal?              @db.Decimal(5, 2)
+  riskLevel           RiskLevel             @default(LOW)
+  checklistTemplate   ChecklistTemplate     @relation(fields: [checklistTemplateId], references: [id], onDelete: Cascade)
+  options             ChecklistItemOption[]
+  rules               ChecklistRule[]
+  responses           TaskItemResponse[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@unique([checklistTemplateId, sequenceOrder])
+}
+
+model ChecklistItemOption {
+  id              String        @id @default(cuid())
+  checklistItemId String
+  label           String
+  value           String
+  sequenceOrder   Int
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@unique([checklistItemId, value])
+}
+
+model ChecklistRule {
+  id              String        @id @default(cuid())
+  checklistItemId String
+  operator        String
+  thresholdMin    Decimal?      @db.Decimal(14, 4)
+  thresholdMax    Decimal?      @db.Decimal(14, 4)
+  expectedValue   String?
+  resultStatus    String?
+  severity        RiskLevel     @default(MEDIUM)
+  createAlert     Boolean       @default(false)
+  createTicket    Boolean       @default(false)
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model MaintenanceSchedule {
+  id                   String            @id @default(cuid())
+  equipmentId          String
+  checklistTemplateId  String
+  assignedRoleId       String?
+  assignedUserId       String?
+  frequencyType        FrequencyType
+  customCronExpression String?
+  startDate            DateTime
+  dueTime              String?
+  gracePeriodMinutes   Int               @default(0)
+  nextRunAt            DateTime?
+  active               Boolean           @default(true)
+  equipment            Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  checklistTemplate    ChecklistTemplate @relation(fields: [checklistTemplateId], references: [id])
+  assignedRole         Role?             @relation(fields: [assignedRoleId], references: [id])
+  assignedUser         User?             @relation("AssignedScheduleUser", fields: [assignedUserId], references: [id])
+  tasks                MaintenanceTask[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([equipmentId, active])
+  @@index([nextRunAt])
+}
+
+model MaintenanceTask {
+  id                       String                    @id @default(cuid())
+  maintenanceScheduleId    String
+  equipmentId              String
+  facilityId               String
+  assignedUserId           String?
+  completedById            String?
+  scheduledAt              DateTime
+  dueAt                    DateTime
+  overdueAt                DateTime?
+  status                   TaskStatus                @default(UPCOMING)
+  startedAt                DateTime?
+  submittedAt              DateTime?
+  completedAt              DateTime?
+  completionClassification CompletionClassification?
+  complianceScore          Decimal?                  @db.Decimal(5, 2)
+  submittedOffline         Boolean                   @default(false)
+  syncedAt                 DateTime?
+  maintenanceSchedule      MaintenanceSchedule       @relation(fields: [maintenanceScheduleId], references: [id])
+  equipment                Equipment                 @relation(fields: [equipmentId], references: [id])
+  facility                 Facility                  @relation(fields: [facilityId], references: [id])
+  assignedUser             User?                     @relation("AssignedTaskUser", fields: [assignedUserId], references: [id])
+  completedBy              User?                     @relation("CompletedTaskUser", fields: [completedById], references: [id])
+  responses                TaskItemResponse[]
+  evidence                 EvidenceFile[]
+  alerts                   Alert[]
+  tickets                  MaintenanceTicket[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+
+  @@index([facilityId, status])
+  @@index([assignedUserId, dueAt])
+  @@index([equipmentId, scheduledAt])
+}
+
+model TaskItemResponse {
+  id                String          @id @default(cuid())
+  maintenanceTaskId String
+  checklistItemId   String
+  responseBoolean   Boolean?
+  responseNumber    Decimal?        @db.Decimal(14, 4)
+  responseText      String?
+  responseOptionId  String?
+  passed            Boolean?
+  comment           String?
+  completedAt       DateTime?
+  maintenanceTask   MaintenanceTask @relation(fields: [maintenanceTaskId], references: [id], onDelete: Cascade)
+  checklistItem     ChecklistItem   @relation(fields: [checklistItemId], references: [id])
+  evidence          EvidenceFile[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([maintenanceTaskId, checklistItemId])
+}
+
+model RegisteredDevice {
+  id               String         @id @default(cuid())
+  userId           String
+  deviceIdentifier String
+  deviceModel      String?
+  platform         String?
+  appVersion       String?
+  isTrusted        Boolean        @default(false)
+  lastSeenAt       DateTime?
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evidence         EvidenceFile[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([userId, deviceIdentifier])
+}
+
+model EvidenceFile {
+  id                         String             @id @default(cuid())
+  maintenanceTaskId          String?
+  taskItemResponseId         String?
+  equipmentId                String?
+  facilityId                 String?
+  userId                     String
+  registeredDeviceId         String?
+  fileUrl                    String
+  thumbnailUrl               String?
+  fileHash                   String?
+  capturedAtDevice           DateTime
+  receivedAtServer           DateTime           @default(now())
+  latitude                   Decimal?           @db.Decimal(10, 7)
+  longitude                  Decimal?           @db.Decimal(10, 7)
+  gpsAccuracy                Decimal?           @db.Decimal(10, 2)
+  distanceFromFacilityMeters Decimal?           @db.Decimal(12, 2)
+  capturedOffline            Boolean            @default(false)
+  syncedAt                   DateTime?
+  verificationStatus         VerificationStatus @default(PENDING)
+  suspiciousFlag             Boolean            @default(false)
+  watermarkData              Json?
+  maintenanceTask            MaintenanceTask?   @relation(fields: [maintenanceTaskId], references: [id], onDelete: Cascade)
+  taskItemResponse           TaskItemResponse?  @relation(fields: [taskItemResponseId], references: [id], onDelete: Cascade)
+  equipment                  Equipment?         @relation(fields: [equipmentId], references: [id])
+  facility                   Facility?          @relation(fields: [facilityId], references: [id])
+  user                       User               @relation(fields: [userId], references: [id])
+  registeredDevice           RegisteredDevice?  @relation(fields: [registeredDeviceId], references: [id])
+  createdAt                  DateTime           @default(now())
+
+  @@index([maintenanceTaskId])
+  @@index([facilityId, capturedAtDevice])
+  @@index([verificationStatus])
+}
+
+model Alert {
+  id                String             @id @default(cuid())
+  facilityId        String?
+  equipmentId       String?
+  maintenanceTaskId String?
+  ticketId          String?
+  alertType         String
+  severity          RiskLevel
+  title             String
+  message           String
+  status            AlertStatus        @default(OPEN)
+  triggeredAt       DateTime           @default(now())
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
+  facility          Facility?          @relation(fields: [facilityId], references: [id])
+  equipment         Equipment?         @relation(fields: [equipmentId], references: [id])
+  maintenanceTask   MaintenanceTask?   @relation(fields: [maintenanceTaskId], references: [id])
+  ticket            MaintenanceTicket? @relation(fields: [ticketId], references: [id])
+  recipients        AlertRecipient[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status, severity])
+}
+
+model AlertRecipient {
+  id              String          @id @default(cuid())
+  alertId         String
+  userId          String
+  deliveryChannel DeliveryChannel
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  acknowledgedAt  DateTime?
+  alert           Alert           @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+
+  @@unique([alertId, userId, deliveryChannel])
+}
+
+model MaintenanceTicket {
+  id                   String            @id @default(cuid())
+  ticketNumber         String            @unique
+  equipmentId          String
+  facilityId           String
+  maintenanceTaskId    String?
+  reportedById         String
+  assignedTechnicianId String?
+  sourceType           TicketSourceType
+  sourceId             String?
+  faultDescription     String
+  severity             RiskLevel
+  priority             Int               @default(3)
+  status               TicketStatus      @default(OPEN)
+  reportedAt           DateTime          @default(now())
+  acknowledgedAt       DateTime?
+  workStartedAt        DateTime?
+  resolvedAt           DateTime?
+  verifiedAt           DateTime?
+  closedAt             DateTime?
+  downtimeMinutes      Int?
+  estimatedCost        Decimal?          @db.Decimal(14, 2)
+  actualCost           Decimal?          @db.Decimal(14, 2)
+  equipment            Equipment         @relation(fields: [equipmentId], references: [id])
+  facility             Facility          @relation(fields: [facilityId], references: [id])
+  maintenanceTask      MaintenanceTask?  @relation(fields: [maintenanceTaskId], references: [id])
+  reportedBy           User              @relation("TicketReporter", fields: [reportedById], references: [id])
+  assignedTechnician   User?             @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  alerts               Alert[]
+  activities           TicketActivity[]
+  diagnoses            TicketDiagnosis[]
+  repairs              TicketRepair[]
+  parts                TicketPart[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([facilityId, status])
+  @@index([assignedTechnicianId, status])
+}
+
+model TicketActivity {
+  id        String            @id @default(cuid())
+  ticketId  String
+  userId    String
+  action    String
+  comment   String?
+  oldStatus TicketStatus?
+  newStatus TicketStatus?
+  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model TicketDiagnosis {
+  id                String            @id @default(cuid())
+  ticketId          String
+  diagnosis         String
+  rootCause         String?
+  recommendedAction String?
+  ticket            MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+}
+
+model TicketRepair {
+  id                         String                        @id @default(cuid())
+  ticketId                   String
+  actionTaken                String
+  repairOutcome              String?
+  equipmentStatusAfterRepair EquipmentFunctionalityStatus?
+  ticket                     MaintenanceTicket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime                      @default(now())
+}
+
+model TicketPart {
+  id        String            @id @default(cuid())
+  ticketId  String
+  partName  String
+  quantity  Int
+  unitCost  Decimal?          @db.Decimal(14, 2)
+  totalCost Decimal?          @db.Decimal(14, 2)
+  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+}
+
+model ComplianceSnapshot {
+  id                   String    @id @default(cuid())
+  facilityId           String?
+  scopeType            String
+  scopeId              String
+  periodStart          DateTime
+  periodEnd            DateTime
+  tasksDue             Int
+  tasksCompleted       Int
+  tasksCompletedOnTime Int
+  tasksCompletedLate   Int
+  tasksMissed          Int
+  compliancePercentage Decimal   @db.Decimal(5, 2)
+  completionPercentage Decimal   @db.Decimal(5, 2)
+  facility             Facility? @relation(fields: [facilityId], references: [id])
+  createdAt            DateTime  @default(now())
+
+  @@unique([scopeType, scopeId, periodStart, periodEnd])
+  @@index([facilityId, periodStart])
+}
+
+model EquipmentPerformanceMetric {
+  id                      String    @id @default(cuid())
+  equipmentId             String
+  periodStart             DateTime
+  periodEnd               DateTime
+  uptimeMinutes           Int       @default(0)
+  downtimeMinutes         Int       @default(0)
+  failureCount            Int       @default(0)
+  repeatFailureCount      Int       @default(0)
+  maintenanceCount        Int       @default(0)
+  meanTimeBetweenFailures Decimal?  @db.Decimal(14, 2)
+  meanTimeToRepair        Decimal?  @db.Decimal(14, 2)
+  healthScore             Decimal?  @db.Decimal(5, 2)
+  equipment               Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  createdAt               DateTime  @default(now())
+
+  @@unique([equipmentId, periodStart, periodEnd])
+}
+
+model SimulationSession {
+  id                String            @id @default(cuid())
+  organizationId    String
+  simulatedDatetime DateTime
+  timezone          String            @default("Africa/Lagos")
+  speedMultiplier   Decimal           @default(1) @db.Decimal(8, 2)
+  enabled           Boolean           @default(true)
+  createdById       String
+  startedAt         DateTime          @default(now())
+  endedAt           DateTime?
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  events            SimulationEvent[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([organizationId, enabled])
+}
+
+model SimulationEvent {
+  id                  String            @id @default(cuid())
+  simulationSessionId String
+  eventType           String
+  description         String?
+  metadata            Json?
+  occurredAt          DateTime          @default(now())
+  simulationSession   SimulationSession @relation(fields: [simulationSessionId], references: [id], onDelete: Cascade)
+}
+
+model RewardLevel {
+  id             String          @id @default(cuid())
+  name           String          @unique
+  minimumCredits Int
+  maximumCredits Int?
+  benefits       Json?
+  accounts       RewardAccount[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model RewardAccount {
+  id                String              @id @default(cuid())
+  userId            String              @unique
+  currentLevelId    String?
+  totalCredits      Int                 @default(0)
+  lifetimeCredits   Int                 @default(0)
+  currentStreakDays Int                 @default(0)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentLevel      RewardLevel?        @relation(fields: [currentLevelId], references: [id])
+  transactions      RewardTransaction[]
+  redemptions       RewardRedemption[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+}
+
+model RewardRule {
+  id               String   @id @default(cuid())
+  activityType     String   @unique
+  creditValue      Int      @default(0)
+  penaltyValue     Int      @default(0)
+  dailyLimit       Int?
+  requiresApproval Boolean  @default(false)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model RewardTransaction {
+  id              String                @id @default(cuid())
+  rewardAccountId String
+  activityType    String
+  referenceType   String?
+  referenceId     String?
+  credits         Int
+  transactionType RewardTransactionType
+  description     String?
+  approvedById    String?
+  rewardAccount   RewardAccount         @relation(fields: [rewardAccountId], references: [id], onDelete: Cascade)
+  createdAt       DateTime              @default(now())
+
+  @@index([rewardAccountId, createdAt])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  icon        String?
+  users       UserBadge[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model UserBadge {
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge    Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+}
+
+model RewardCatalogue {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  creditCost  Int
+  stockCount  Int?
+  active      Boolean            @default(true)
+  redemptions RewardRedemption[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model RewardRedemption {
+  id                String                 @id @default(cuid())
+  rewardAccountId   String
+  rewardCatalogueId String
+  creditsUsed       Int
+  status            RewardRedemptionStatus @default(REQUESTED)
+  requestedAt       DateTime               @default(now())
+  fulfilledAt       DateTime?
+  rewardAccount     RewardAccount          @relation(fields: [rewardAccountId], references: [id])
+  rewardCatalogue   RewardCatalogue        @relation(fields: [rewardCatalogueId], references: [id])
+
+  @@index([status, requestedAt])
+}
+
+model LearningCourse {
+  id              String             @id @default(cuid())
+  equipmentTypeId String?
+  title           String
+  description     String?
+  courseType      String?
+  status          RecordStatus       @default(ACTIVE)
+  equipmentType   EquipmentType?     @relation(fields: [equipmentTypeId], references: [id])
+  modules         LearningModule[]
+  enrollments     CourseEnrollment[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model LearningModule {
+  id            String         @id @default(cuid())
+  courseId      String
+  title         String
+  sequenceOrder Int
+  content       Json?
+  course        LearningCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([courseId, sequenceOrder])
+}
+
+model CourseEnrollment {
+  id          String         @id @default(cuid())
+  courseId    String
+  userId      String
+  progress    Decimal        @default(0) @db.Decimal(5, 2)
+  completedAt DateTime?
+  course      LearningCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([courseId, userId])
+}
+
+model Partnership {
+  id               String       @id @default(cuid())
+  vendorId         String?
+  organizationName String
+  partnerType      String
+  contactPerson    String?
+  contactEmail     String?
+  agreementStart   DateTime?
+  agreementEnd     DateTime?
+  status           RecordStatus @default(ACTIVE)
+  vendor           Vendor?      @relation(fields: [vendorId], references: [id])
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model FeedbackSubmission {
+  id           String         @id @default(cuid())
+  userId       String
+  facilityId   String?
+  equipmentId  String?
+  category     String
+  subject      String
+  description  String
+  priority     RiskLevel      @default(LOW)
+  status       FeedbackStatus @default(OPEN)
+  assignedToId String?
+  resolvedAt   DateTime?
+  user         User           @relation(fields: [userId], references: [id])
+  facility     Facility?      @relation(fields: [facilityId], references: [id])
+  equipment    Equipment?     @relation(fields: [equipmentId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status, priority])
+}
+
+model PilotProject {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  pilotStage     String?
+  startDate      DateTime
+  endDate        DateTime?
+  status         RecordStatus      @default(ACTIVE)
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  facilities     PilotFacility[]
+  indicators     ImpactIndicator[]
+  costRecords    CostRecord[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+}
+
+model PilotFacility {
+  id             String                 @id @default(cuid())
+  pilotProjectId String
+  facilityId     String
+  groupType      PilotGroupType
+  pilotProject   PilotProject           @relation(fields: [pilotProjectId], references: [id], onDelete: Cascade)
+  facility       Facility               @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  measurements   IndicatorMeasurement[]
+  createdAt      DateTime               @default(now())
+
+  @@unique([pilotProjectId, facilityId])
+}
+
+model ImpactIndicator {
+  id                String                 @id @default(cuid())
+  pilotProjectId    String
+  name              String
+  indicatorType     String
+  unit              String?
+  calculationMethod String?
+  frequency         String?
+  isPrimary         Boolean                @default(false)
+  pilotProject      PilotProject           @relation(fields: [pilotProjectId], references: [id], onDelete: Cascade)
+  measurements      IndicatorMeasurement[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([pilotProjectId, name])
+}
+
+model IndicatorMeasurement {
+  id                String          @id @default(cuid())
+  pilotFacilityId   String
+  impactIndicatorId String
+  measurementPeriod DateTime
+  measurementType   MeasurementType
+  value             Decimal         @db.Decimal(18, 4)
+  notes             String?
+  pilotFacility     PilotFacility   @relation(fields: [pilotFacilityId], references: [id], onDelete: Cascade)
+  impactIndicator   ImpactIndicator @relation(fields: [impactIndicatorId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([pilotFacilityId, impactIndicatorId, measurementPeriod, measurementType])
+}
+
+model CostRecord {
+  id             String       @id @default(cuid())
+  pilotProjectId String
+  facilityId     String?
+  costCategory   String
+  description    String?
+  amount         Decimal      @db.Decimal(14, 2)
+  currencyCode   String       @default("NGN")
+  incurredAt     DateTime
+  pilotProject   PilotProject @relation(fields: [pilotProjectId], references: [id], onDelete: Cascade)
+  facility       Facility?    @relation(fields: [facilityId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([pilotProjectId, costCategory])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  user       User?    @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+}
+
+model SyncLog {
+  id             String     @id @default(cuid())
+  userId         String
+  deviceId       String?
+  entityType     String
+  entityLocalId  String?
+  entityServerId String?
+  status         SyncStatus @default(PENDING)
+  errorMessage   String?
+  attemptedAt    DateTime   @default(now())
+  completedAt    DateTime?
+  payloadHash    String?
+
+  @@index([userId, status])
+}
