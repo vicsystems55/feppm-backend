@@ -1,5 +1,7 @@
 import { Router } from 'express';
 
+import authRouter from './authRoutes.js';
+
 const router = Router();
 
 export function healthCheck(_request, response) {
@@ -11,5 +13,6 @@ export function healthCheck(_request, response) {
 }
 
 router.get('/health', healthCheck);
+router.use('/auth', authRouter);
 
 export default router;
