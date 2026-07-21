@@ -5,7 +5,7 @@ import morgan from 'morgan';
 
 import { env } from './config/env.js';
 import { errorHandler, notFound } from './middleware/error.js';
-import apiRouter from './routes/index.js';
+import apiRouter, { healthCheck } from './routes/index.js';
 
 const app = express();
 
@@ -15,6 +15,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 
+app.get('/health', healthCheck);
 app.use('/api/v1', apiRouter);
 
 app.use(notFound);

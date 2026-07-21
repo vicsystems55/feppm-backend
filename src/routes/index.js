@@ -2,12 +2,14 @@ import { Router } from 'express';
 
 const router = Router();
 
-router.get('/health', (_request, response) => {
+export function healthCheck(_request, response) {
   response.json({
     success: true,
     message: 'FEPPM API is healthy',
     timestamp: new Date().toISOString(),
   });
-});
+}
+
+router.get('/health', healthCheck);
 
 export default router;
