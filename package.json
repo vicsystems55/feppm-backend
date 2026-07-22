@@ -11,7 +11,8 @@
     "prisma:seed": "node prisma/seed.js",
     "import:gombe": "node scripts/importGombeFacilities.js",
     "create:gombe-state-admin": "node scripts/createGombeStateAdmin.js",
-    "seed:cold-chain-checklists": "node scripts/seedColdChainChecklists.js"
+    "seed:cold-chain-checklists": "node scripts/seedColdChainChecklists.js",
+    "import:gombe-equipment": "node scripts/importGombeEquipment.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",

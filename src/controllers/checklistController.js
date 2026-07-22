@@ -146,10 +146,11 @@ export async function archiveTemplate(request, response) {
 }
 
 async function ensureManagerTasks(user, frequency) {
-  if (!user.facilityId) return;
+  const facilityId = user.facility?.id;
+  if (!facilityId) return;
   const { start, end } = periodBounds(frequency);
   const schedules = await prisma.maintenanceSchedule.findMany({
-    where: { active: true, frequencyType: frequency, equipment: { facilityId: user.facilityId, status: 'ACTIVE' }, checklistTemplate: { status: 'ACTIVE' } },
+    where: { active: true, frequencyType: frequency, equipment: { facilityId, status: 'ACTIVE' }, checklistTemplate: { status: 'ACTIVE' } },
     include: { equipment: { select: { facilityId: true } } },
   });
   for (const schedule of schedules) {
@@ -163,7 +164,7 @@ export async function listMyChecklistTasks(request, response) {
   await ensureManagerTasks(request.authUser, frequency);
   const { start, end } = periodBounds(frequency);
   const tasks = await prisma.maintenanceTask.findMany({
-    where: { facilityId: request.authUser.facilityId ?? '__none__', assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end }, maintenanceSchedule: { frequencyType: frequency } },
+    where: { facilityId: request.authUser.facility?.id ?? '__none__', assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end }, maintenanceSchedule: { frequencyType: frequency } },
     include: {
       equipment: { select: { id: true, assetCode: true, equipmentType: { select: { name: true } } } },
       maintenanceSchedule: { include: { checklistTemplate: { include: { items: { orderBy: { sequenceOrder: 'asc' } } } } } },
@@ -175,7 +176,7 @@ export async function listMyChecklistTasks(request, response) {
 }
 
 export async function startChecklistTask(request, response) {
-  const task = await prisma.maintenanceTask.findFirst({ where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facilityId ?? '__none__' } });
+  const task = await prisma.maintenanceTask.findFirst({ where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facility?.id ?? '__none__' } });
   if (!task) return response.status(404).json({ success: false, message: 'Checklist task not found.' });
   const updated = await prisma.maintenanceTask.update({ where: { id: task.id }, data: { status: 'IN_PROGRESS', startedAt: task.startedAt ?? new Date() } });
   return response.json({ success: true, data: { task: updated } });
@@ -183,7 +184,7 @@ export async function startChecklistTask(request, response) {
 
 export async function submitChecklistTask(request, response) {
   const task = await prisma.maintenanceTask.findFirst({
-    where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facilityId ?? '__none__' },
+    where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facility?.id ?? '__none__' },
     include: { maintenanceSchedule: { include: { checklistTemplate: { include: { items: true } } } } },
   });
   if (!task) return response.status(404).json({ success: false, message: 'Checklist task not found.' });

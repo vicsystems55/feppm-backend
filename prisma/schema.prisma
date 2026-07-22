@@ -518,44 +518,59 @@ model Vendor {
 }
 
 model Equipment {
-  id                  String                       @id @default(cuid())
-  facilityId          String
-  departmentId        String?
-  equipmentTypeId     String
-  equipmentModelId    String?
-  vendorId            String?
-  assetCode           String
-  serialNumber        String?
-  yearOfManufacture   Int?
-  installationDate    DateTime?
-  commissioningDate   DateTime?
-  powerSource         String?
-  functionalityStatus EquipmentFunctionalityStatus @default(UNKNOWN)
-  conditionStatus     EquipmentConditionStatus     @default(UNKNOWN)
-  warrantyStartDate   DateTime?
-  warrantyEndDate     DateTime?
-  expectedEndOfLife   DateTime?
-  purchaseCost        Decimal?                     @db.Decimal(14, 2)
-  replacementCost     Decimal?                     @db.Decimal(14, 2)
-  latitude            Decimal?                     @db.Decimal(10, 7)
-  longitude           Decimal?                     @db.Decimal(10, 7)
-  status              RecordStatus                 @default(ACTIVE)
-  facility            Facility                     @relation(fields: [facilityId], references: [id])
-  department          FacilityDepartment?          @relation(fields: [departmentId], references: [id])
-  equipmentType       EquipmentType                @relation(fields: [equipmentTypeId], references: [id])
-  equipmentModel      EquipmentModel?              @relation(fields: [equipmentModelId], references: [id])
-  vendor              Vendor?                      @relation(fields: [vendorId], references: [id])
-  documents           EquipmentDocument[]
-  statusHistory       EquipmentStatusHistory[]
-  schedules           MaintenanceSchedule[]
-  tasks               MaintenanceTask[]
-  evidence            EvidenceFile[]
-  alerts              Alert[]
-  tickets             MaintenanceTicket[]
-  performanceMetrics  EquipmentPerformanceMetric[]
-  feedback            FeedbackSubmission[]
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  id                              String                       @id @default(cuid())
+  facilityId                      String
+  departmentId                    String?
+  equipmentTypeId                 String
+  equipmentModelId                String?
+  vendorId                        String?
+  assetCode                       String
+  serialNumber                    String?
+  yearOfManufacture               Int?
+  installationDate                DateTime?
+  commissioningDate               DateTime?
+  powerSource                     String?
+  grossVolumeLitres               Decimal?                     @db.Decimal(10, 2)
+  netVolumeLitres                 Decimal?                     @db.Decimal(10, 2)
+  hasAlarmSystem                  Boolean?
+  hasAdequateShelves              Boolean?
+  hasCurtain                      Boolean?
+  downtimeMonths                  Int?
+  nonFunctionalReason             String?
+  coolingUnitCount                Int?
+  hasContinuousTemperatureMonitor Boolean?
+  hasBuiltInThermometer           Boolean?
+  fundingSource                   String?
+  repairHistory                   String?
+  underWarranty                   Boolean?
+  source                          String?
+  sourceRowNumber                 Int?
+  functionalityStatus             EquipmentFunctionalityStatus @default(UNKNOWN)
+  conditionStatus                 EquipmentConditionStatus     @default(UNKNOWN)
+  warrantyStartDate               DateTime?
+  warrantyEndDate                 DateTime?
+  expectedEndOfLife               DateTime?
+  purchaseCost                    Decimal?                     @db.Decimal(14, 2)
+  replacementCost                 Decimal?                     @db.Decimal(14, 2)
+  latitude                        Decimal?                     @db.Decimal(10, 7)
+  longitude                       Decimal?                     @db.Decimal(10, 7)
+  status                          RecordStatus                 @default(ACTIVE)
+  facility                        Facility                     @relation(fields: [facilityId], references: [id])
+  department                      FacilityDepartment?          @relation(fields: [departmentId], references: [id])
+  equipmentType                   EquipmentType                @relation(fields: [equipmentTypeId], references: [id])
+  equipmentModel                  EquipmentModel?              @relation(fields: [equipmentModelId], references: [id])
+  vendor                          Vendor?                      @relation(fields: [vendorId], references: [id])
+  documents                       EquipmentDocument[]
+  statusHistory                   EquipmentStatusHistory[]
+  schedules                       MaintenanceSchedule[]
+  tasks                           MaintenanceTask[]
+  evidence                        EvidenceFile[]
+  alerts                          Alert[]
+  tickets                         MaintenanceTicket[]
+  performanceMetrics              EquipmentPerformanceMetric[]
+  feedback                        FeedbackSubmission[]
+  createdAt                       DateTime                     @default(now())
+  updatedAt                       DateTime                     @updatedAt
 
   @@unique([facilityId, assetCode])
   @@index([equipmentTypeId])
