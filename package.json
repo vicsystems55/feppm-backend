@@ -10,7 +10,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "node prisma/seed.js",
     "import:gombe": "node scripts/importGombeFacilities.js",
-    "create:gombe-state-admin": "node scripts/createGombeStateAdmin.js"
+    "create:gombe-state-admin": "node scripts/createGombeStateAdmin.js",
+    "seed:cold-chain-checklists": "node scripts/seedColdChainChecklists.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",
