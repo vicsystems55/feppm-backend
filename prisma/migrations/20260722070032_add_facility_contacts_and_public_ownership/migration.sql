@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `facility` MODIFY `ownershipType` ENUM('FEDERAL', 'STATE', 'LGA', 'PUBLIC', 'PRIVATE', 'NGO', 'FAITH_BASED', 'OTHER') NULL;
+ALTER TABLE `Facility` MODIFY `ownershipType` ENUM('FEDERAL', 'STATE', 'LGA', 'PUBLIC', 'PRIVATE', 'NGO', 'FAITH_BASED', 'OTHER') NULL;
 
 -- CreateTable
 CREATE TABLE `FacilityContact` (

@@ -6,10 +6,19 @@ function required(name) {
   return value;
 }
 
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+const defaultClientUrl = nodeEnv === 'production'
+  ? 'https://feppm.netlify.app'
+  : 'http://localhost:5173';
+
+function commaSeparatedValues(value) {
+  return [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+}
+
 export const env = Object.freeze({
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
   port: Number(process.env.PORT ?? 5000),
-  clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
+  clientUrls: commaSeparatedValues(process.env.CLIENT_URLS ?? process.env.CLIENT_URL ?? defaultClientUrl),
   jwtSecret: required('JWT_SECRET'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET'),
   jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
