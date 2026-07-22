@@ -50,6 +50,7 @@ enum OwnershipType {
   FEDERAL
   STATE
   LGA
+  PUBLIC
   PRIVATE
   NGO
   FAITH_BASED
@@ -304,6 +305,7 @@ model Facility {
   country              Country              @relation(fields: [countryId], references: [id])
   administrativeUnit   AdministrativeUnit   @relation(fields: [administrativeUnitId], references: [id])
   manager              User?                @relation("FacilityManager", fields: [managerUserId], references: [id])
+  contacts             FacilityContact[]
   departments          FacilityDepartment[]
   equipment            Equipment[]
   users                User[]
@@ -321,6 +323,26 @@ model Facility {
   @@unique([organizationId, facilityCode])
   @@index([administrativeUnitId])
   @@index([status])
+}
+
+model FacilityContact {
+  id              String   @id @default(cuid())
+  facilityId      String
+  contactKey      String
+  fullName        String
+  jobTitle        String?
+  phone           String?
+  normalizedPhone String?
+  isPhoneValid    Boolean  @default(false)
+  isPrimary       Boolean  @default(false)
+  source          String?
+  sourceRowNumber Int?
+  facility        Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([facilityId, contactKey])
+  @@index([normalizedPhone])
 }
 
 model FacilityDepartment {

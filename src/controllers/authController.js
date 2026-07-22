@@ -12,8 +12,20 @@ import {
   findUserCredentialsByEmail,
   findUserForAuthentication,
   serializeAuthenticatedUser,
-  userHasRole,
 } from '../services/userAccessService.js';
+
+const webAppRoles = new Set([
+  'SUPER_ADMIN',
+  'NATIONAL_ADMIN',
+  'ZONAL_ADMIN',
+  'STATE_ADMIN',
+  'LGA_ADMIN',
+  'FACILITY_MANAGER',
+]);
+
+function hasWebAppAccess(user) {
+  return user.roles.some(({ role }) => webAppRoles.has(role.key));
+}
 
 function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -56,8 +68,8 @@ export async function login(request, response) {
     return response.status(403).json({ success: false, message: 'This account is not active.' });
   }
 
-  if (!userHasRole(user, 'SUPER_ADMIN')) {
-    return response.status(403).json({ success: false, message: 'Super Admin access is required.' });
+  if (!hasWebAppAccess(user)) {
+    return response.status(403).json({ success: false, message: 'Web application access is required.' });
   }
 
   await prisma.user.update({
@@ -79,7 +91,7 @@ export async function refreshSession(request, response) {
     const payload = verifyRefreshToken(refreshToken);
     const user = await findUserForAuthentication(payload.sub);
 
-    if (!user || user.status !== 'ACTIVE' || !userHasRole(user, 'SUPER_ADMIN')) {
+    if (!user || user.status !== 'ACTIVE' || !hasWebAppAccess(user)) {
       return response.status(401).json({ success: false, message: 'Unable to refresh this session.' });
     }
 

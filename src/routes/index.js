@@ -1,6 +1,9 @@
 import { Router } from 'express';
 
 import authRouter from './authRoutes.js';
+import adminAccountRouter from './adminAccountRoutes.js';
+import dashboardRouter from './dashboardRoutes.js';
+import facilityRouter from './facilityRoutes.js';
 
 const router = Router();
 
@@ -14,5 +17,8 @@ export function healthCheck(_request, response) {
 
 router.get('/health', healthCheck);
 router.use('/auth', authRouter);
+router.use('/admin', adminAccountRouter);
+router.use('/dashboard', dashboardRouter);
+router.use('/facilities', facilityRouter);
 
 export default router;

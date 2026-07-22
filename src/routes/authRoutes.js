@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 
 import { getCurrentUser, login, logout, refreshSession } from '../controllers/authController.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -17,6 +17,6 @@ const loginLimiter = rateLimit({
 router.post('/login', loginLimiter, login);
 router.post('/refresh', refreshSession);
 router.post('/logout', logout);
-router.get('/me', authenticate, requireRole('SUPER_ADMIN'), getCurrentUser);
+router.get('/me', authenticate, getCurrentUser);
 
 export default router;

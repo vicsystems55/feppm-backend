@@ -34,3 +34,12 @@ export function requireRole(roleKey) {
     return next();
   };
 }
+
+export function requirePermission(permissionKey) {
+  return function authorizePermission(request, response, next) {
+    if (!request.auth?.permissions?.includes(permissionKey)) {
+      return response.status(403).json({ success: false, message: 'You do not have permission to access this resource.' });
+    }
+    return next();
+  };
+}

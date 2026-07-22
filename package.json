@@ -8,13 +8,16 @@
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "node prisma/seed.js"
+    "prisma:seed": "node prisma/seed.js",
+    "import:gombe": "node scripts/importGombeFacilities.js",
+    "create:gombe-state-admin": "node scripts/createGombeStateAdmin.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csv-parse": "^7.0.1",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.6.0",

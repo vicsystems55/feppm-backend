@@ -385,16 +385,27 @@ async function seedDemoUsers() {
     select: { id: true, key: true },
   });
   const roleIds = new Map(roleRecords.map((role) => [role.key, role.id]));
+  const gombeOrganization = await prisma.organization.findFirst({
+    where: { name: 'Gombe State Ministry of Health' },
+  });
+  const gombeState = gombeOrganization
+    ? await prisma.administrativeUnit.findFirst({
+      where: { organizationId: gombeOrganization.id, name: 'Gombe', type: 'STATE' },
+    })
+    : null;
   const seededUsers = [];
 
   for (const definition of demoUsers) {
     const roleId = roleIds.get(definition.roleKey);
     if (!roleId) throw new Error(`Role not found during demo-user seed: ${definition.roleKey}`);
+    const useGombeScope = definition.roleKey === 'STATE_ADMIN' && gombeOrganization && gombeState;
+    const assignedOrganization = useGombeScope ? gombeOrganization : organization;
+    const assignedScope = useGombeScope ? gombeState : scopes[definition.scope];
 
     const user = await prisma.user.upsert({
       where: { email: definition.email },
       update: {
-        organizationId: organization.id,
+        organizationId: assignedOrganization.id,
         facilityId: definition.facility ? facility.id : null,
         firstName: definition.firstName,
         lastName: definition.lastName,
@@ -402,7 +413,7 @@ async function seedDemoUsers() {
         status: 'ACTIVE',
       },
       create: {
-        organizationId: organization.id,
+        organizationId: assignedOrganization.id,
         facilityId: definition.facility ? facility.id : null,
         firstName: definition.firstName,
         lastName: definition.lastName,
@@ -418,11 +429,11 @@ async function seedDemoUsers() {
       prisma.userScope.deleteMany({ where: { userId: user.id } }),
     ]);
 
-    if (definition.scope) {
+    if (assignedScope) {
       await prisma.userScope.create({
         data: {
           userId: user.id,
-          administrativeUnitId: scopes[definition.scope].id,
+          administrativeUnitId: assignedScope.id,
         },
       });
     }

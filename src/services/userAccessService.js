@@ -12,6 +12,13 @@ const authenticatedUserSelect = {
   facility: {
     select: { id: true, name: true, facilityCode: true },
   },
+  scopes: {
+    select: {
+      administrativeUnit: {
+        select: { id: true, name: true, type: true, parentId: true },
+      },
+    },
+  },
   roles: {
     select: {
       role: {
@@ -63,6 +70,7 @@ export function serializeAuthenticatedUser(user) {
     email: user.email,
     organization: user.organization,
     facility: user.facility,
+    scopes: user.scopes.map(({ administrativeUnit }) => administrativeUnit),
     roles,
     permissions,
   };
