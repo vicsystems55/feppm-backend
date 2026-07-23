@@ -55,7 +55,7 @@ export async function uploadChecklistEvidence(request, response) {
       where: {
         id: taskId,
         assignedUserId: request.authUser.id,
-        facilityId: request.authUser.facilityId ?? '__none__',
+        facilityId: request.authUser.facility?.id ?? '__none__',
         maintenanceSchedule: {
           checklistTemplate: { items: { some: { id: checklistItemId } } },
         },
