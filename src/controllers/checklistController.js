@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma.js';
 const frequencies = new Set(['DAILY', 'WEEKLY', 'MONTHLY']);
 const inputTypes = new Set(['CHECKBOX', 'YES_NO', 'PASS_FAIL', 'NUMBER', 'TEMPERATURE', 'HUMIDITY', 'DATE', 'TIME', 'SHORT_TEXT', 'LONG_TEXT', 'DROPDOWN', 'MULTI_SELECT', 'PHOTO', 'MULTIPLE_PHOTOS', 'SIGNATURE', 'GPS_CONFIRMATION']);
 const photoTypes = new Set(['PHOTO', 'MULTIPLE_PHOTOS']);
+const checklistTransactionTimeoutMs =
+  Number.parseInt(process.env.CHECKLIST_TRANSACTION_TIMEOUT_MS, 10) || 20_000;
 
 function clean(value, length = 255) {
   return typeof value === 'string' ? value.trim().slice(0, length) : '';
@@ -345,6 +347,8 @@ export async function submitChecklistTask(request, response) {
         });
       }
     }
+  }, {
+    timeout: checklistTransactionTimeoutMs,
   });
   return response.json({ success: true, message: 'Checklist submitted successfully.' });
 }
