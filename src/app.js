@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import { env } from './config/env.js';
+import { evidenceUploadDirectory } from './config/uploads.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import apiRouter, { healthCheck } from './routes/index.js';
 
@@ -14,7 +15,7 @@ if (env.nodeEnv === 'production') {
   app.set('trust proxy', 1);
 }
 
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: env.clientUrls, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
@@ -22,6 +23,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', healthCheck);
+app.use('/uploads/evidence', express.static(evidenceUploadDirectory, {
+  immutable: true,
+  maxAge: '30d',
+}));
 app.use('/api/v1', apiRouter);
 
 app.use(notFound);

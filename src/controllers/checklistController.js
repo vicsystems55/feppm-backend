@@ -8,6 +8,18 @@ function clean(value, length = 255) {
   return typeof value === 'string' ? value.trim().slice(0, length) : '';
 }
 
+function completionStamp(date, timezone = 'Africa/Lagos') {
+  try {
+    return new Intl.DateTimeFormat('en-NG', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: timezone,
+    }).format(date);
+  } catch {
+    return date.toISOString();
+  }
+}
+
 function periodBounds(frequency, now = new Date()) {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
@@ -185,7 +197,20 @@ export async function startChecklistTask(request, response) {
 export async function submitChecklistTask(request, response) {
   const task = await prisma.maintenanceTask.findFirst({
     where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facility?.id ?? '__none__' },
-    include: { maintenanceSchedule: { include: { checklistTemplate: { include: { items: true } } } } },
+    include: {
+      equipment: { select: { assetCode: true } },
+      facility: {
+        select: {
+          id: true,
+          name: true,
+          organizationId: true,
+          administrativeUnitId: true,
+          managerUserId: true,
+          timezone: true,
+        },
+      },
+      maintenanceSchedule: { include: { checklistTemplate: { include: { items: true } } } },
+    },
   });
   if (!task) return response.status(404).json({ success: false, message: 'Checklist task not found.' });
   const submitted = new Map((Array.isArray(request.body?.responses) ? request.body.responses : []).map((item) => [item.checklistItemId, item]));
@@ -213,6 +238,113 @@ export async function submitChecklistTask(request, response) {
       }
     }
     await tx.maintenanceTask.update({ where: { id: task.id }, data: { status: now <= task.dueAt ? 'COMPLETED_ON_TIME' : 'COMPLETED_LATE', submittedAt: now, completedAt: now, completedById: request.authUser.id, submittedOffline: request.body?.submittedOffline === true, syncedAt: now, complianceScore: 100 } });
+
+    const existingCompletionAlerts = await tx.alert.findMany({
+      where: {
+        maintenanceTaskId: task.id,
+        alertType: {
+          in: ['TASK_COMPLETED_MANAGER', 'TASK_COMPLETED_LGA'],
+        },
+      },
+      select: { alertType: true },
+    });
+    const existingTypes = new Set(
+      existingCompletionAlerts.map((alert) => alert.alertType),
+    );
+    const managerName = [
+      request.authUser.firstName,
+      request.authUser.lastName,
+    ].filter(Boolean).join(' ') || 'A Facility Manager';
+    const frequency = task.maintenanceSchedule.frequencyType.toLowerCase();
+    const completedOn = completionStamp(now, task.facility.timezone);
+
+    if (!existingTypes.has('TASK_COMPLETED_MANAGER')) {
+      const facilityManagers = await tx.user.findMany({
+        where: {
+          organizationId: task.facility.organizationId,
+          status: 'ACTIVE',
+          OR: [
+            {
+              id: {
+                in: [
+                  request.authUser.id,
+                  task.assignedUserId,
+                  task.facility.managerUserId,
+                ].filter(Boolean),
+              },
+            },
+            {
+              facilityId: task.facilityId,
+              roles: { some: { role: { key: 'FACILITY_MANAGER' } } },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+
+      const managerIds = [
+        ...new Set(facilityManagers.map((user) => user.id)),
+      ];
+      if (managerIds.length) {
+        await tx.alert.create({
+          data: {
+            facilityId: task.facilityId,
+            equipmentId: task.equipmentId,
+            maintenanceTaskId: task.id,
+            alertType: 'TASK_COMPLETED_MANAGER',
+            severity: 'LOW',
+            title: "Today's task has been completed",
+            message: `Your ${frequency} maintenance task for ${task.equipment.assetCode} at ${task.facility.name} was completed on ${completedOn}.`,
+            status: 'RESOLVED',
+            resolvedAt: now,
+            recipients: {
+              create: managerIds.map((userId) => ({
+                userId,
+                deliveryChannel: 'IN_APP',
+              })),
+            },
+          },
+        });
+      }
+    }
+
+    if (!existingTypes.has('TASK_COMPLETED_LGA')) {
+      const lgaAdmins = await tx.user.findMany({
+        where: {
+          organizationId: task.facility.organizationId,
+          status: 'ACTIVE',
+          roles: { some: { role: { key: 'LGA_ADMIN' } } },
+          scopes: {
+            some: {
+              administrativeUnitId: task.facility.administrativeUnitId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      if (lgaAdmins.length) {
+        await tx.alert.create({
+          data: {
+            facilityId: task.facilityId,
+            equipmentId: task.equipmentId,
+            maintenanceTaskId: task.id,
+            alertType: 'TASK_COMPLETED_LGA',
+            severity: 'LOW',
+            title: 'Facility task completed',
+            message: `${managerName} completed the ${frequency} maintenance task for ${task.equipment.assetCode} at ${task.facility.name} on ${completedOn}.`,
+            status: 'RESOLVED',
+            resolvedAt: now,
+            recipients: {
+              create: lgaAdmins.map(({ id: userId }) => ({
+                userId,
+                deliveryChannel: 'IN_APP',
+              })),
+            },
+          },
+        });
+      }
+    }
   });
   return response.json({ success: true, message: 'Checklist submitted successfully.' });
 }
