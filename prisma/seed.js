@@ -159,6 +159,42 @@ const roles = [
 
 const defaultDemoPassword = 'Demo@FEPPM2026';
 
+const rewardLevels = [
+  { name: 'Starter', minimumCredits: 0, maximumCredits: 99 },
+  { name: 'Bronze', minimumCredits: 100, maximumCredits: 249 },
+  { name: 'Silver', minimumCredits: 250, maximumCredits: 499 },
+  { name: 'Gold', minimumCredits: 500, maximumCredits: 999 },
+  { name: 'Champion', minimumCredits: 1000, maximumCredits: null },
+];
+
+const badges = [
+  {
+    name: 'Starter',
+    description: 'Completed the first daily preventive-maintenance task.',
+    icon: 'sparkles',
+  },
+  {
+    name: '3-Day Streak',
+    description: 'Completed daily preventive-maintenance tasks for three consecutive days.',
+    icon: 'flame',
+  },
+  {
+    name: '7-Day Streak',
+    description: 'Maintained preventive-maintenance activity for seven consecutive days.',
+    icon: 'award',
+  },
+  {
+    name: '30-Day Champion',
+    description: 'Maintained preventive-maintenance activity for thirty consecutive days.',
+    icon: 'trophy',
+  },
+  {
+    name: '100 Point Club',
+    description: 'Earned the first one hundred FEPPM reward points.',
+    icon: 'star',
+  },
+];
+
 const demoUsers = [
   {
     roleKey: 'SUPER_ADMIN',
@@ -244,6 +280,41 @@ async function seedRoles() {
       prisma.rolePermission.deleteMany({ where: { roleId: role.id } }),
       prisma.rolePermission.createMany({ data: assignments }),
     ]);
+  }
+}
+
+async function seedRewards() {
+  for (const level of rewardLevels) {
+    await prisma.rewardLevel.upsert({
+      where: { name: level.name },
+      update: level,
+      create: level,
+    });
+  }
+
+  await prisma.rewardRule.upsert({
+    where: { activityType: 'DAILY_TASK_COMPLETED' },
+    update: {
+      creditValue: 10,
+      penaltyValue: 0,
+      requiresApproval: false,
+      active: true,
+    },
+    create: {
+      activityType: 'DAILY_TASK_COMPLETED',
+      creditValue: 10,
+      penaltyValue: 0,
+      requiresApproval: false,
+      active: true,
+    },
+  });
+
+  for (const badge of badges) {
+    await prisma.badge.upsert({
+      where: { name: badge.name },
+      update: badge,
+      create: badge,
+    });
   }
 }
 
@@ -457,6 +528,7 @@ async function seedDemoUsers() {
 async function main() {
   await seedPermissions();
   await seedRoles();
+  await seedRewards();
   const { seededUsers, password } = await seedDemoUsers();
 
   const seededRoles = await prisma.role.findMany({
@@ -466,6 +538,7 @@ async function main() {
   });
 
   console.log(`Seeded ${permissions.length} permissions and ${seededRoles.length} roles.`);
+  console.log(`Seeded ${rewardLevels.length} reward levels, 1 reward rule, and ${badges.length} badges.`);
   console.table(
     seededRoles.map((role) => ({
       key: role.key,

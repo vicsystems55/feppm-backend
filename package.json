@@ -12,6 +12,7 @@
     "import:gombe": "node scripts/importGombeFacilities.js",
     "create:gombe-state-admin": "node scripts/createGombeStateAdmin.js",
     "seed:cold-chain-checklists": "node scripts/seedColdChainChecklists.js",
+    "seed:rewards": "node scripts/seedRewards.js",
     "import:gombe-equipment": "node scripts/importGombeEquipment.js"
   },
   "dependencies": {

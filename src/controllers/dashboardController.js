@@ -144,7 +144,20 @@ export async function getDashboard(request, response) {
       take: 8,
       select: { id: true, status: true, scheduledAt: true, dueAt: true, equipment: { select: { assetCode: true, equipmentType: { select: { name: true } } } }, facility: { select: { name: true } } },
     }),
-    prisma.rewardAccount.findUnique({ where: { userId: request.authUser.id }, include: { currentLevel: true } }),
+    prisma.rewardAccount.findUnique({
+      where: { userId: request.authUser.id },
+      include: {
+        currentLevel: true,
+        user: {
+          select: {
+            badges: {
+              include: { badge: true },
+              orderBy: { earnedAt: 'desc' },
+            },
+          },
+        },
+      },
+    }),
     prisma.user.count({ where: { lastLoginAt: { gte: start, lt: end } } }),
     prisma.registeredDevice.findMany({ select: { lastSeenAt: true, isTrusted: true } }),
   ]);
@@ -192,10 +205,40 @@ export async function getDashboard(request, response) {
       recentAlerts,
       myTasks,
       reward: reward ? {
+        points: reward.totalCredits,
         credits: reward.totalCredits,
+        lifetimePoints: reward.lifetimeCredits,
         streakDays: reward.currentStreakDays,
+        longestStreakDays: reward.longestStreakDays,
+        lastStreakDate: reward.lastStreakDate,
         level: reward.currentLevel?.name ?? 'Starter',
-      } : { credits: 0, streakDays: 0, level: 'Starter' },
+        levelMinimumPoints: reward.currentLevel?.minimumCredits ?? 0,
+        nextLevelPoints: reward.currentLevel?.maximumCredits == null
+          ? null
+          : reward.currentLevel.maximumCredits + 1,
+        pointsToNextLevel: reward.currentLevel?.maximumCredits == null
+          ? 0
+          : Math.max(0, (reward.currentLevel.maximumCredits + 1) - reward.totalCredits),
+        badges: reward.user.badges.map(({ badge, earnedAt }) => ({
+          id: badge.id,
+          name: badge.name,
+          description: badge.description,
+          icon: badge.icon,
+          earnedAt,
+        })),
+      } : {
+        points: 0,
+        credits: 0,
+        lifetimePoints: 0,
+        streakDays: 0,
+        longestStreakDays: 0,
+        lastStreakDate: null,
+        level: 'Starter',
+        levelMinimumPoints: 0,
+        nextLevelPoints: 100,
+        pointsToNextLevel: 100,
+        badges: [],
+      },
       platform: {
         dailyLogins,
         registeredDevices: devices.length,

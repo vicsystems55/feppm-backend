@@ -1045,6 +1045,8 @@ model RewardAccount {
   totalCredits      Int                 @default(0)
   lifetimeCredits   Int                 @default(0)
   currentStreakDays Int                 @default(0)
+  longestStreakDays Int                 @default(0)
+  lastStreakDate    DateTime?
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   currentLevel      RewardLevel?        @relation(fields: [currentLevelId], references: [id])
   transactions      RewardTransaction[]
@@ -1078,6 +1080,7 @@ model RewardTransaction {
   rewardAccount   RewardAccount         @relation(fields: [rewardAccountId], references: [id], onDelete: Cascade)
   createdAt       DateTime              @default(now())
 
+  @@unique([activityType, referenceId])
   @@index([rewardAccountId, createdAt])
 }
 

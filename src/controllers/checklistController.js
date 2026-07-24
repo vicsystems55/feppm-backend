@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { awardDailyTaskCompletion } from '../services/rewardService.js';
 
 const frequencies = new Set(['DAILY', 'WEEKLY', 'MONTHLY']);
 const inputTypes = new Set(['CHECKBOX', 'YES_NO', 'PASS_FAIL', 'NUMBER', 'TEMPERATURE', 'HUMIDITY', 'DATE', 'TIME', 'SHORT_TEXT', 'LONG_TEXT', 'DROPDOWN', 'MULTI_SELECT', 'PHOTO', 'MULTIPLE_PHOTOS', 'SIGNATURE', 'GPS_CONFIRMATION']);
@@ -215,6 +216,12 @@ export async function submitChecklistTask(request, response) {
     },
   });
   if (!task) return response.status(404).json({ success: false, message: 'Checklist task not found.' });
+  if (['COMPLETED_ON_TIME', 'COMPLETED_LATE'].includes(task.status)) {
+    return response.json({
+      success: true,
+      message: 'This checklist task was already submitted.',
+    });
+  }
   const submitted = new Map((Array.isArray(request.body?.responses) ? request.body.responses : []).map((item) => [item.checklistItemId, item]));
   for (const item of task.maintenanceSchedule.checklistTemplate.items) {
     const answer = submitted.get(item.id);
@@ -240,6 +247,15 @@ export async function submitChecklistTask(request, response) {
       }
     }
     await tx.maintenanceTask.update({ where: { id: task.id }, data: { status: now <= task.dueAt ? 'COMPLETED_ON_TIME' : 'COMPLETED_LATE', submittedAt: now, completedAt: now, completedById: request.authUser.id, submittedOffline: request.body?.submittedOffline === true, syncedAt: now, complianceScore: 100 } });
+
+    if (task.maintenanceSchedule.frequencyType === 'DAILY') {
+      await awardDailyTaskCompletion(tx, {
+        userId: request.authUser.id,
+        taskId: task.id,
+        completedAt: now,
+        timezone: task.facility.timezone,
+      });
+    }
 
     const existingCompletionAlerts = await tx.alert.findMany({
       where: {
