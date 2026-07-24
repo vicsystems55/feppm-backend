@@ -135,7 +135,9 @@ export async function uploadChecklistEvidence(request, response) {
       facilityLatitude,
       facilityLongitude,
     );
-    if (distanceFromFacilityMeters > env.evidenceGeofenceRadiusMeters) {
+    const outsideGeofence =
+      distanceFromFacilityMeters > env.evidenceGeofenceRadiusMeters;
+    if (outsideGeofence && env.evidenceGeofenceEnforced) {
       await discard(request.file);
       return response.status(403).json({
         success: false,
@@ -163,6 +165,9 @@ export async function uploadChecklistEvidence(request, response) {
       longitude,
       gpsAccuracy,
       distanceFromFacilityMeters: Math.round(distanceFromFacilityMeters * 100) / 100,
+      outsideGeofence,
+      geofenceEnforced: env.evidenceGeofenceEnforced,
+      geofenceRadiusMeters: env.evidenceGeofenceRadiusMeters,
     };
     const verified = {
       taskId,
@@ -188,6 +193,9 @@ export async function uploadChecklistEvidence(request, response) {
         size: request.file.size,
         ...verified,
         verificationToken,
+        locationWarning: outsideGeofence
+          ? `Demo mode: this photo was captured ${Math.round(distanceFromFacilityMeters)} metres from ${task.facility.name}.`
+          : null,
       },
     });
   } catch (error) {

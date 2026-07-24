@@ -28,6 +28,7 @@ export const env = Object.freeze({
   evidenceVerificationSecret: process.env.EVIDENCE_VERIFICATION_SECRET ?? required('JWT_SECRET'),
   evidenceGeofenceRadiusMeters: Number(process.env.EVIDENCE_GEOFENCE_RADIUS_METERS ?? 250),
   evidenceMaxGpsAccuracyMeters: Number(process.env.EVIDENCE_MAX_GPS_ACCURACY_METERS ?? 100),
+  evidenceGeofenceEnforced: String(process.env.EVIDENCE_GEOFENCE_ENFORCED ?? 'false').toLowerCase() === 'true',
   refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? 'feppm_refresh_token',
   refreshCookieMaxAgeMs: Number(process.env.REFRESH_COOKIE_MAX_AGE_MS ?? 604800000),
 });
