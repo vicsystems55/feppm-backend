@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { verifyEvidenceToken } from '../services/evidenceVerificationService.js';
 import { awardDailyTaskCompletion } from '../services/rewardService.js';
 
 const frequencies = new Set(['DAILY', 'WEEKLY', 'MONTHLY']);
@@ -182,6 +183,7 @@ export async function listMyChecklistTasks(request, response) {
     where: { facilityId: request.authUser.facility?.id ?? '__none__', assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end }, maintenanceSchedule: { frequencyType: frequency } },
     include: {
       equipment: { select: { id: true, assetCode: true, equipmentType: { select: { name: true } } } },
+      facility: { select: { id: true, name: true, latitude: true, longitude: true, timezone: true } },
       maintenanceSchedule: { include: { checklistTemplate: { include: { items: { orderBy: { sequenceOrder: 'asc' } } } } } },
       responses: { include: { evidence: true } },
     },
@@ -229,6 +231,24 @@ export async function submitChecklistTask(request, response) {
     const photos = Array.isArray(answer?.photos) ? answer.photos.filter((photo) => clean(photo.fileUrl, 1000)) : [];
     if (item.isRequired && !hasValue && !photoTypes.has(item.inputType)) return response.status(400).json({ success: false, message: `Answer required: ${item.title}` });
     if (item.evidenceRequirement === 'REQUIRED' && !photos.length) return response.status(400).json({ success: false, message: `Photo required: ${item.title}` });
+    for (const photo of photos) {
+      if (!String(photo.fileUrl).includes('/uploads/evidence/')) continue;
+      try {
+        const verified = verifyEvidenceToken(photo.verificationToken);
+        if (
+          verified.taskId !== task.id
+          || verified.checklistItemId !== item.id
+          || verified.userId !== request.authUser.id
+          || verified.fileUrl !== photo.fileUrl
+        ) throw new Error('Evidence identity mismatch.');
+        Object.assign(photo, verified);
+      } catch {
+        return response.status(400).json({
+          success: false,
+          message: `Location verification failed for: ${item.title}. Capture the photo again.`,
+        });
+      }
+    }
   }
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -243,7 +263,7 @@ export async function submitChecklistTask(request, response) {
         const fileUrl = clean(photo.fileUrl, 1000);
         if (!fileUrl) continue;
         const alreadySaved = await tx.evidenceFile.findFirst({ where: { taskItemResponseId: itemResponse.id, fileUrl } });
-        if (!alreadySaved) await tx.evidenceFile.create({ data: { maintenanceTaskId: task.id, taskItemResponseId: itemResponse.id, equipmentId: task.equipmentId, facilityId: task.facilityId, userId: request.authUser.id, fileUrl, thumbnailUrl: clean(photo.thumbnailUrl, 1000) || null, capturedAtDevice: photo.capturedAt ? new Date(photo.capturedAt) : now, latitude: Number.isFinite(Number(photo.latitude)) ? Number(photo.latitude) : null, longitude: Number.isFinite(Number(photo.longitude)) ? Number(photo.longitude) : null, capturedOffline: photo.capturedOffline === true, syncedAt: now } });
+        if (!alreadySaved) await tx.evidenceFile.create({ data: { maintenanceTaskId: task.id, taskItemResponseId: itemResponse.id, equipmentId: task.equipmentId, facilityId: task.facilityId, userId: request.authUser.id, fileUrl, thumbnailUrl: clean(photo.thumbnailUrl, 1000) || null, capturedAtDevice: photo.capturedAt ? new Date(photo.capturedAt) : now, latitude: Number.isFinite(Number(photo.latitude)) ? Number(photo.latitude) : null, longitude: Number.isFinite(Number(photo.longitude)) ? Number(photo.longitude) : null, gpsAccuracy: Number.isFinite(Number(photo.gpsAccuracy)) ? Number(photo.gpsAccuracy) : null, distanceFromFacilityMeters: Number.isFinite(Number(photo.distanceFromFacilityMeters)) ? Number(photo.distanceFromFacilityMeters) : null, capturedOffline: photo.capturedOffline === true, syncedAt: now, watermarkData: photo.watermarkData && typeof photo.watermarkData === 'object' ? photo.watermarkData : undefined, suspiciousFlag: false } });
       }
     }
     await tx.maintenanceTask.update({ where: { id: task.id }, data: { status: now <= task.dueAt ? 'COMPLETED_ON_TIME' : 'COMPLETED_LATE', submittedAt: now, completedAt: now, completedById: request.authUser.id, submittedOffline: request.body?.submittedOffline === true, syncedAt: now, complianceScore: 100 } });

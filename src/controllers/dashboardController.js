@@ -142,7 +142,7 @@ export async function getDashboard(request, response) {
       where: { assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end } },
       orderBy: { dueAt: 'asc' },
       take: 8,
-      select: { id: true, status: true, scheduledAt: true, dueAt: true, equipment: { select: { assetCode: true, equipmentType: { select: { name: true } } } }, facility: { select: { name: true } } },
+      select: { id: true, status: true, scheduledAt: true, dueAt: true, equipment: { select: { assetCode: true, equipmentType: { select: { name: true } } } }, facility: { select: { name: true, latitude: true, longitude: true } } },
     }),
     prisma.rewardAccount.findUnique({
       where: { userId: request.authUser.id },
