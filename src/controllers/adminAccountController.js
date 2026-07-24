@@ -12,7 +12,7 @@ const accountSelect = {
   lastLoginAt: true,
   createdAt: true,
   organization: { select: { id: true, name: true } },
-  facility: { select: { id: true, name: true } },
+  facility: { select: { id: true, name: true, administrativeUnitId: true } },
   roles: { select: { role: { select: { id: true, key: true, name: true } } } },
   scopes: { select: { administrativeUnit: { select: { id: true, name: true, type: true } } } },
 };
@@ -40,6 +40,7 @@ function requiredScopeType(roleKey) {
     ZONAL_ADMIN: 'ZONE',
     STATE_ADMIN: 'STATE',
     LGA_ADMIN: 'LGA',
+    FACILITY_MANAGER: 'LGA',
   }[roleKey] ?? null;
 }
 
@@ -60,8 +61,15 @@ async function validateAssignment({ organizationId, roleId, scopeUnitId, facilit
     if (!scope) throw new Error(`${role.name} requires a ${expectedScope.toLowerCase()} scope in the selected organization.`);
   }
   if (role.key === 'FACILITY_MANAGER') {
-    facility = await prisma.facility.findFirst({ where: { id: facilityId, organizationId } });
-    if (!facility) throw new Error('Facility Manager requires a facility in the selected organization.');
+    facility = await prisma.facility.findFirst({
+      where: {
+        id: facilityId,
+        organizationId,
+        administrativeUnitId: scope?.id,
+        status: 'ACTIVE',
+      },
+    });
+    if (!facility) throw new Error('Select an active health facility within the chosen LGA.');
   }
   return { role, scope, facility };
 }
@@ -167,20 +175,36 @@ export async function createAccount(request, response) {
       facilityId: request.body?.facilityId,
     });
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await prisma.user.create({
-      data: {
-        organizationId,
-        facilityId: assignment.facility?.id,
-        firstName,
-        lastName,
-        email,
-        phone: String(request.body?.phone ?? '').trim() || null,
-        passwordHash,
-        status: 'ACTIVE',
-        roles: { create: { roleId } },
-        ...(assignment.scope ? { scopes: { create: { administrativeUnitId: assignment.scope.id } } } : {}),
-      },
-      select: accountSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          organizationId,
+          facilityId: assignment.facility?.id,
+          firstName,
+          lastName,
+          email,
+          phone: String(request.body?.phone ?? '').trim() || null,
+          passwordHash,
+          status: 'ACTIVE',
+          roles: { create: { roleId } },
+          ...(assignment.scope ? { scopes: { create: { administrativeUnitId: assignment.scope.id } } } : {}),
+        },
+        select: accountSelect,
+      });
+      if (assignment.role.key === 'FACILITY_MANAGER') {
+        await tx.facility.update({
+          where: { id: assignment.facility.id },
+          data: { managerUserId: created.id },
+        });
+        await tx.maintenanceTask.updateMany({
+          where: {
+            facilityId: assignment.facility.id,
+            status: { in: ['UPCOMING', 'DUE', 'IN_PROGRESS', 'OVERDUE', 'MISSED'] },
+          },
+          data: { assignedUserId: created.id },
+        });
+      }
+      return created;
     });
     return response.status(201).json({ success: true, message: 'Account created.', data: { account: serializeAccount(user) } });
   } catch (error) {
@@ -191,7 +215,7 @@ export async function createAccount(request, response) {
 export async function updateAccount(request, response) {
   const account = await prisma.user.findUnique({
     where: { id: request.params.id },
-    select: { id: true, roles: { select: { role: { select: { key: true } } } } },
+    select: { id: true, facilityId: true, roles: { select: { role: { select: { key: true } } } } },
   });
   if (!account) return response.status(404).json({ success: false, message: 'Account not found.' });
 
@@ -217,8 +241,8 @@ export async function updateAccount(request, response) {
     if (account.id === request.auth.id && assignment.role.key !== 'SUPER_ADMIN') {
       return response.status(400).json({ success: false, message: 'You cannot remove your own Super Admin role.' });
     }
-    await prisma.$transaction([
-      prisma.user.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
         where: { id: account.id },
         data: {
           organizationId,
@@ -228,12 +252,50 @@ export async function updateAccount(request, response) {
           phone: String(request.body?.phone ?? '').trim() || null,
           status,
         },
-      }),
-      prisma.userRole.deleteMany({ where: { userId: account.id } }),
-      prisma.userScope.deleteMany({ where: { userId: account.id } }),
-      prisma.userRole.create({ data: { userId: account.id, roleId } }),
-      ...(assignment.scope ? [prisma.userScope.create({ data: { userId: account.id, administrativeUnitId: assignment.scope.id } })] : []),
-    ]);
+      });
+      await tx.userRole.deleteMany({ where: { userId: account.id } });
+      await tx.userScope.deleteMany({ where: { userId: account.id } });
+      await tx.userRole.create({ data: { userId: account.id, roleId } });
+      if (assignment.scope) {
+        await tx.userScope.create({
+          data: {
+            userId: account.id,
+            administrativeUnitId: assignment.scope.id,
+          },
+        });
+      }
+
+      if (account.facilityId) {
+        await tx.facility.updateMany({
+          where: { id: account.facilityId, managerUserId: account.id },
+          data: { managerUserId: null },
+        });
+      }
+      await tx.maintenanceTask.updateMany({
+        where: {
+          assignedUserId: account.id,
+          status: { in: ['UPCOMING', 'DUE', 'IN_PROGRESS', 'OVERDUE', 'MISSED'] },
+          ...(assignment.facility
+            ? { facilityId: { not: assignment.facility.id } }
+            : {}),
+        },
+        data: { assignedUserId: null },
+      });
+
+      if (assignment.role.key === 'FACILITY_MANAGER') {
+        await tx.facility.update({
+          where: { id: assignment.facility.id },
+          data: { managerUserId: account.id },
+        });
+        await tx.maintenanceTask.updateMany({
+          where: {
+            facilityId: assignment.facility.id,
+            status: { in: ['UPCOMING', 'DUE', 'IN_PROGRESS', 'OVERDUE', 'MISSED'] },
+          },
+          data: { assignedUserId: account.id },
+        });
+      }
+    });
     const updated = await prisma.user.findUnique({ where: { id: account.id }, select: accountSelect });
     return response.json({ success: true, message: 'Account access updated.', data: { account: serializeAccount(updated) } });
   } catch (error) {

@@ -137,6 +137,9 @@ export async function updateTemplate(request, response) {
 export async function publishTemplate(request, response) {
   const template = await prisma.checklistTemplate.findUnique({ where: { id: request.params.id }, include: { items: true } });
   if (!template) return response.status(404).json({ success: false, message: 'Checklist template not found.' });
+  if (template.status !== 'INACTIVE') {
+    return response.status(409).json({ success: false, message: 'Only draft templates can be published. Unarchive this template first.' });
+  }
   if (!template.items.length) return response.status(400).json({ success: false, message: 'A checklist must contain questions before publishing.' });
   const [facilityManagerRole, equipment] = await Promise.all([
     prisma.role.findUnique({ where: { key: 'FACILITY_MANAGER' } }),
@@ -150,7 +153,19 @@ export async function publishTemplate(request, response) {
     await tx.checklistTemplate.update({ where: { id: template.id }, data: { status: 'ACTIVE' } });
     for (const item of equipment) {
       const schedule = await tx.maintenanceSchedule.findFirst({ where: { equipmentId: item.id, checklistTemplateId: template.id } });
-      if (!schedule) await tx.maintenanceSchedule.create({ data: { equipmentId: item.id, checklistTemplateId: template.id, assignedRoleId: facilityManagerRole?.id, frequencyType: template.frequencyType, startDate: new Date(), active: true } });
+      if (schedule) {
+        await tx.maintenanceSchedule.update({
+          where: { id: schedule.id },
+          data: {
+            assignedRoleId: facilityManagerRole?.id,
+            frequencyType: template.frequencyType,
+            startDate: new Date(),
+            active: true,
+          },
+        });
+      } else {
+        await tx.maintenanceSchedule.create({ data: { equipmentId: item.id, checklistTemplateId: template.id, assignedRoleId: facilityManagerRole?.id, frequencyType: template.frequencyType, startDate: new Date(), active: true } });
+      }
     }
   });
   return response.json({ success: true, message: `Checklist published and applied to ${equipment.length} registered equipment records.`, data: { equipmentScheduled: equipment.length } });
@@ -161,17 +176,61 @@ export async function archiveTemplate(request, response) {
   return response.json({ success: true, message: 'Checklist archived.', data: { template } });
 }
 
+export async function unarchiveTemplate(request, response) {
+  const template = await prisma.checklistTemplate.findUnique({
+    where: { id: request.params.id },
+    select: { id: true, status: true },
+  });
+  if (!template) {
+    return response.status(404).json({ success: false, message: 'Checklist template not found.' });
+  }
+  if (template.status !== 'ARCHIVED') {
+    return response.status(409).json({ success: false, message: 'Only archived checklist templates can be unarchived.' });
+  }
+
+  const restored = await prisma.checklistTemplate.update({
+    where: { id: template.id },
+    data: { status: 'INACTIVE' },
+  });
+  return response.json({
+    success: true,
+    message: 'Checklist restored to draft. You can now publish it again.',
+    data: { template: restored },
+  });
+}
+
 async function ensureManagerTasks(user, frequency) {
   const facilityId = user.facility?.id;
   if (!facilityId) return;
+  const facility = await prisma.facility.findUnique({
+    where: { id: facilityId },
+    select: { managerUserId: true },
+  });
+  if (facility?.managerUserId && facility.managerUserId !== user.id) return;
   const { start, end } = periodBounds(frequency);
   const schedules = await prisma.maintenanceSchedule.findMany({
     where: { active: true, frequencyType: frequency, equipment: { facilityId, status: 'ACTIVE' }, checklistTemplate: { status: 'ACTIVE' } },
     include: { equipment: { select: { facilityId: true } } },
   });
   for (const schedule of schedules) {
-    const exists = await prisma.maintenanceTask.findFirst({ where: { maintenanceScheduleId: schedule.id, scheduledAt: { gte: start, lt: end } } });
-    if (!exists) await prisma.maintenanceTask.create({ data: { maintenanceScheduleId: schedule.id, equipmentId: schedule.equipmentId, facilityId: schedule.equipment.facilityId, assignedUserId: user.id, scheduledAt: start, dueAt: end, overdueAt: end, status: 'DUE' } });
+    const existing = await prisma.maintenanceTask.findFirst({
+      where: {
+        maintenanceScheduleId: schedule.id,
+        scheduledAt: { gte: start, lt: end },
+      },
+      select: { id: true, assignedUserId: true, status: true },
+    });
+    if (!existing) {
+      await prisma.maintenanceTask.create({ data: { maintenanceScheduleId: schedule.id, equipmentId: schedule.equipmentId, facilityId: schedule.equipment.facilityId, assignedUserId: user.id, scheduledAt: start, dueAt: end, overdueAt: end, status: 'DUE' } });
+    } else if (
+      existing.assignedUserId !== user.id
+      && !['COMPLETED_ON_TIME', 'COMPLETED_LATE'].includes(existing.status)
+    ) {
+      await prisma.maintenanceTask.update({
+        where: { id: existing.id },
+        data: { assignedUserId: user.id },
+      });
+    }
   }
 }
 
