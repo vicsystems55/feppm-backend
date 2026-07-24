@@ -44,6 +44,26 @@ function requiredScopeType(roleKey) {
   }[roleKey] ?? null;
 }
 
+async function administrativeUnitBelongsToScope({
+  administrativeUnitId,
+  scopeId,
+  organizationId,
+}) {
+  let currentId = administrativeUnitId;
+  const visited = new Set();
+  while (currentId && !visited.has(currentId)) {
+    if (currentId === scopeId) return true;
+    visited.add(currentId);
+    const unit = await prisma.administrativeUnit.findFirst({
+      where: { id: currentId, organizationId },
+      select: { parentId: true },
+    });
+    if (!unit) return false;
+    currentId = unit.parentId;
+  }
+  return false;
+}
+
 async function validateAssignment({ organizationId, roleId, scopeUnitId, facilityId }) {
   const [organization, role] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId } }),
@@ -65,11 +85,15 @@ async function validateAssignment({ organizationId, roleId, scopeUnitId, facilit
       where: {
         id: facilityId,
         organizationId,
-        administrativeUnitId: scope?.id,
         status: 'ACTIVE',
       },
     });
-    if (!facility) throw new Error('Select an active health facility within the chosen LGA.');
+    const facilityInLga = facility && await administrativeUnitBelongsToScope({
+      administrativeUnitId: facility.administrativeUnitId,
+      scopeId: scope?.id,
+      organizationId,
+    });
+    if (!facilityInLga) throw new Error('Select an active health facility within the chosen LGA or one of its wards.');
   }
   return { role, scope, facility };
 }
