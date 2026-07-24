@@ -234,7 +234,7 @@ export async function unarchiveTemplate(request, response) {
   });
 }
 
-async function ensureManagerTasks(user, frequency) {
+export async function ensureManagerTasks(user, frequency) {
   const facilityId = user.facility?.id;
   if (!facilityId) return;
   const facility = await prisma.facility.findUnique({

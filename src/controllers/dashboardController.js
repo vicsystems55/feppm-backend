@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { ensureManagerTasks } from './checklistController.js';
 import { resolveFacilityAccess } from '../services/facilityAccessService.js';
 
 const rolePriority = ['SUPER_ADMIN', 'NATIONAL_ADMIN', 'ZONAL_ADMIN', 'STATE_ADMIN', 'LGA_ADMIN', 'FACILITY_MANAGER'];
@@ -86,6 +87,9 @@ function maintenanceTrend(tasks) {
 
 export async function getDashboard(request, response) {
   const roleKey = primaryRole(request.authUser);
+  if (roleKey === 'FACILITY_MANAGER') {
+    await ensureManagerTasks(request.authUser, 'DAILY');
+  }
   const access = await resolveFacilityAccess(request.authUser);
   const { start, end } = dayBounds();
   const twelveMonthsAgo = new Date(start);
@@ -139,7 +143,11 @@ export async function getDashboard(request, response) {
     }),
     prisma.maintenanceTask.findMany({ where: { ...facilityRelation, dueAt: { gte: twelveMonthsAgo } }, select: { dueAt: true, status: true } }),
     prisma.maintenanceTask.findMany({
-      where: { assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end } },
+      where: {
+        assignedUserId: request.authUser.id,
+        ...facilityRelation,
+        scheduledAt: { gte: start, lt: end },
+      },
       orderBy: { dueAt: 'asc' },
       take: 8,
       select: { id: true, status: true, scheduledAt: true, dueAt: true, equipment: { select: { assetCode: true, equipmentType: { select: { name: true } } } }, facility: { select: { name: true, latitude: true, longitude: true } } },
