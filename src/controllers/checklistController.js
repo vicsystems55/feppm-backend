@@ -141,33 +141,68 @@ export async function publishTemplate(request, response) {
     return response.status(409).json({ success: false, message: 'Only draft templates can be published. Unarchive this template first.' });
   }
   if (!template.items.length) return response.status(400).json({ success: false, message: 'A checklist must contain questions before publishing.' });
-  const [facilityManagerRole, equipment] = await Promise.all([
+  const [facilityManagerRole, equipment, supersededTemplates, existingSchedules] = await Promise.all([
     prisma.role.findUnique({ where: { key: 'FACILITY_MANAGER' } }),
     prisma.equipment.findMany({ where: { equipmentTypeId: template.equipmentTypeId, status: 'ACTIVE' }, select: { id: true } }),
+    prisma.checklistTemplate.findMany({
+      where: {
+        equipmentTypeId: template.equipmentTypeId,
+        frequencyType: template.frequencyType,
+        name: template.name,
+        status: 'ACTIVE',
+        id: { not: template.id },
+      },
+      select: { id: true },
+    }),
+    prisma.maintenanceSchedule.findMany({
+      where: { checklistTemplateId: template.id },
+      select: { equipmentId: true },
+    }),
   ]);
-  await prisma.$transaction(async (tx) => {
-    await tx.checklistTemplate.updateMany({
-      where: { equipmentTypeId: template.equipmentTypeId, frequencyType: template.frequencyType, name: template.name, status: 'ACTIVE', id: { not: template.id } },
+  const equipmentIds = equipment.map(({ id }) => id);
+  const scheduledEquipmentIds = new Set(existingSchedules.map(({ equipmentId }) => equipmentId));
+  const missingEquipmentIds = equipmentIds.filter((id) => !scheduledEquipmentIds.has(id));
+  const supersededTemplateIds = supersededTemplates.map(({ id }) => id);
+  const startDate = new Date();
+  const operations = [
+    prisma.checklistTemplate.updateMany({
+      where: { id: { in: supersededTemplateIds } },
       data: { status: 'ARCHIVED' },
-    });
-    await tx.checklistTemplate.update({ where: { id: template.id }, data: { status: 'ACTIVE' } });
-    for (const item of equipment) {
-      const schedule = await tx.maintenanceSchedule.findFirst({ where: { equipmentId: item.id, checklistTemplateId: template.id } });
-      if (schedule) {
-        await tx.maintenanceSchedule.update({
-          where: { id: schedule.id },
-          data: {
-            assignedRoleId: facilityManagerRole?.id,
-            frequencyType: template.frequencyType,
-            startDate: new Date(),
-            active: true,
-          },
-        });
-      } else {
-        await tx.maintenanceSchedule.create({ data: { equipmentId: item.id, checklistTemplateId: template.id, assignedRoleId: facilityManagerRole?.id, frequencyType: template.frequencyType, startDate: new Date(), active: true } });
-      }
-    }
-  });
+    }),
+    prisma.maintenanceSchedule.updateMany({
+      where: { checklistTemplateId: { in: supersededTemplateIds } },
+      data: { active: false },
+    }),
+    prisma.checklistTemplate.update({
+      where: { id: template.id },
+      data: { status: 'ACTIVE' },
+    }),
+    prisma.maintenanceSchedule.updateMany({
+      where: {
+        checklistTemplateId: template.id,
+        equipmentId: { in: equipmentIds },
+      },
+      data: {
+        assignedRoleId: facilityManagerRole?.id,
+        frequencyType: template.frequencyType,
+        startDate,
+        active: true,
+      },
+    }),
+  ];
+  if (missingEquipmentIds.length) {
+    operations.push(prisma.maintenanceSchedule.createMany({
+      data: missingEquipmentIds.map((equipmentId) => ({
+        equipmentId,
+        checklistTemplateId: template.id,
+        assignedRoleId: facilityManagerRole?.id,
+        frequencyType: template.frequencyType,
+        startDate,
+        active: true,
+      })),
+    }));
+  }
+  await prisma.$transaction(operations);
   return response.json({ success: true, message: `Checklist published and applied to ${equipment.length} registered equipment records.`, data: { equipmentScheduled: equipment.length } });
 }
 
