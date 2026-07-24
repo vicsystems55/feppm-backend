@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
+import { uploadEvidenceToCloudinary } from '../services/cloudinaryEvidenceService.js';
 import {
   createEvidenceToken,
   distanceMeters,
@@ -146,8 +147,8 @@ export async function uploadChecklistEvidence(request, response) {
       });
     }
 
-    const origin = `${request.protocol}://${request.get('host')}`;
-    const fileUrl = `${origin}/uploads/evidence/${encodeURIComponent(request.file.filename)}`;
+    const cloudinary = await uploadEvidenceToCloudinary(request.file);
+    const fileUrl = cloudinary.fileUrl;
     const userName = [
       request.authUser.firstName,
       request.authUser.lastName,
@@ -183,12 +184,13 @@ export async function uploadChecklistEvidence(request, response) {
       watermarkData,
     };
     const verificationToken = createEvidenceToken(verified);
+    await discard(request.file);
 
     return response.status(201).json({
       success: true,
       message: 'Evidence uploaded successfully.',
       data: {
-        fileUrl,
+        ...cloudinary,
         mimeType: request.file.mimetype,
         size: request.file.size,
         ...verified,

@@ -232,7 +232,10 @@ export async function submitChecklistTask(request, response) {
     if (item.isRequired && !hasValue && !photoTypes.has(item.inputType)) return response.status(400).json({ success: false, message: `Answer required: ${item.title}` });
     if (item.evidenceRequirement === 'REQUIRED' && !photos.length) return response.status(400).json({ success: false, message: `Photo required: ${item.title}` });
     for (const photo of photos) {
-      if (!String(photo.fileUrl).includes('/uploads/evidence/')) continue;
+      if (
+        !photo.verificationToken
+        && !String(photo.fileUrl).includes('/uploads/evidence/')
+      ) continue;
       try {
         const verified = verifyEvidenceToken(photo.verificationToken);
         if (

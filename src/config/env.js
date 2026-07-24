@@ -29,6 +29,9 @@ export const env = Object.freeze({
   evidenceGeofenceRadiusMeters: Number(process.env.EVIDENCE_GEOFENCE_RADIUS_METERS ?? 250),
   evidenceMaxGpsAccuracyMeters: Number(process.env.EVIDENCE_MAX_GPS_ACCURACY_METERS ?? 100),
   evidenceGeofenceEnforced: String(process.env.EVIDENCE_GEOFENCE_ENFORCED ?? 'false').toLowerCase() === 'true',
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+  cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
+  cloudinaryUploadFolder: process.env.CLOUDINARY_UPLOAD_FOLDER ?? 'feppm/photos',
   refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? 'feppm_refresh_token',
   refreshCookieMaxAgeMs: Number(process.env.REFRESH_COOKIE_MAX_AGE_MS ?? 604800000),
 });
