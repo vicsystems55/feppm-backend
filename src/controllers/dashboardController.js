@@ -150,7 +150,32 @@ export async function getDashboard(request, response) {
       },
       orderBy: { dueAt: 'asc' },
       take: 8,
-      select: { id: true, status: true, scheduledAt: true, dueAt: true, equipment: { select: { assetCode: true, equipmentType: { select: { name: true } } } }, facility: { select: { name: true, latitude: true, longitude: true } } },
+      select: {
+        id: true,
+        status: true,
+        scheduledAt: true,
+        dueAt: true,
+        equipment: {
+          select: {
+            assetCode: true,
+            equipmentType: { select: { name: true } },
+          },
+        },
+        facility: {
+          select: { name: true, latitude: true, longitude: true },
+        },
+        maintenanceSchedule: {
+          select: {
+            checklistTemplate: {
+              select: {
+                name: true,
+                estimatedDurationMinutes: true,
+                items: { orderBy: { sequenceOrder: 'asc' } },
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.rewardAccount.findUnique({
       where: { userId: request.authUser.id },
