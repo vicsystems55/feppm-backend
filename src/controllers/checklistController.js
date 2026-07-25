@@ -286,6 +286,93 @@ export async function listMyChecklistTasks(request, response) {
   return response.json({ success: true, data: { frequency, period: { start, end }, tasks } });
 }
 
+export async function listMyMedia(request, response) {
+  const page = Math.max(1, Number.parseInt(request.query.page, 10) || 1);
+  const pageSize = Math.min(
+    60,
+    Math.max(6, Number.parseInt(request.query.pageSize, 10) || 30),
+  );
+  const facilityId = request.authUser.facility?.id;
+  if (!facilityId) {
+    return response.json({
+      success: true,
+      data: {
+        media: [],
+        pagination: { page, pageSize, total: 0, pages: 1 },
+      },
+    });
+  }
+
+  const where = {
+    userId: request.authUser.id,
+    facilityId,
+    fileUrl: { not: '' },
+  };
+  const [total, evidence] = await Promise.all([
+    prisma.evidenceFile.count({ where }),
+    prisma.evidenceFile.findMany({
+      where,
+      select: {
+        id: true,
+        fileUrl: true,
+        thumbnailUrl: true,
+        capturedAtDevice: true,
+        receivedAtServer: true,
+        latitude: true,
+        longitude: true,
+        distanceFromFacilityMeters: true,
+        capturedOffline: true,
+        verificationStatus: true,
+        facility: { select: { id: true, name: true } },
+        equipment: {
+          select: {
+            id: true,
+            assetCode: true,
+            equipmentType: { select: { name: true } },
+          },
+        },
+        maintenanceTask: {
+          select: {
+            id: true,
+            maintenanceSchedule: { select: { frequencyType: true } },
+          },
+        },
+        taskItemResponse: {
+          select: { checklistItem: { select: { title: true } } },
+        },
+      },
+      orderBy: { capturedAtDevice: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return response.json({
+    success: true,
+    data: {
+      media: evidence.map((item) => ({
+        ...item,
+        latitude: item.latitude === null ? null : Number(item.latitude),
+        longitude: item.longitude === null ? null : Number(item.longitude),
+        distanceFromFacilityMeters: item.distanceFromFacilityMeters === null
+          ? null
+          : Number(item.distanceFromFacilityMeters),
+        frequency: item.maintenanceTask?.maintenanceSchedule.frequencyType ?? null,
+        question: item.taskItemResponse?.checklistItem.title ?? null,
+        maintenanceTask: undefined,
+        taskItemResponse: undefined,
+        source: item.fileUrl.includes('res.cloudinary.com') ? 'CLOUDINARY' : 'LOCAL',
+      })),
+      pagination: {
+        page,
+        pageSize,
+        total,
+        pages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    },
+  });
+}
+
 export async function startChecklistTask(request, response) {
   const task = await prisma.maintenanceTask.findFirst({ where: { id: request.params.id, assignedUserId: request.authUser.id, facilityId: request.authUser.facility?.id ?? '__none__' } });
   if (!task) return response.status(404).json({ success: false, message: 'Checklist task not found.' });

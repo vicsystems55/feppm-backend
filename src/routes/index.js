@@ -5,6 +5,7 @@ import adminAccountRouter from './adminAccountRoutes.js';
 import dashboardRouter from './dashboardRoutes.js';
 import checklistRouter from './checklistRoutes.js';
 import facilityRouter from './facilityRoutes.js';
+import lgaReportRouter from './lgaReportRoutes.js';
 import notificationRouter from './notificationRoutes.js';
 import uploadRouter from './uploadRoutes.js';
 
@@ -24,6 +25,7 @@ router.use('/admin', adminAccountRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/checklists', checklistRouter);
 router.use('/facilities', facilityRouter);
+router.use('/lga', lgaReportRouter);
 router.use('/notifications', notificationRouter);
 router.use('/uploads', uploadRouter);
 
