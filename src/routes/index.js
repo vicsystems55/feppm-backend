@@ -7,6 +7,7 @@ import checklistRouter from './checklistRoutes.js';
 import facilityRouter from './facilityRoutes.js';
 import lgaReportRouter from './lgaReportRoutes.js';
 import notificationRouter from './notificationRoutes.js';
+import ticketRouter from './ticketRoutes.js';
 import uploadRouter from './uploadRoutes.js';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.use('/checklists', checklistRouter);
 router.use('/facilities', facilityRouter);
 router.use('/lga', lgaReportRouter);
 router.use('/notifications', notificationRouter);
+router.use('/tickets', ticketRouter);
 router.use('/uploads', uploadRouter);
 
 export default router;

@@ -47,6 +47,12 @@ const permissions = [
   ['work_orders.update', 'Update work-order progress and activities'],
   ['work_orders.resolve', 'Resolve corrective maintenance work orders'],
   ['work_orders.verify', 'Verify and close corrective maintenance work orders'],
+  ['tickets.view', 'View support tickets within the authorized scope'],
+  ['tickets.create', 'Create support tickets and issue reports'],
+  ['tickets.update', 'Update support tickets and add comments'],
+  ['tickets.assign', 'Assign support tickets within the authorized scope'],
+  ['tickets.resolve', 'Resolve, verify, and close support tickets'],
+  ['tickets.escalate', 'Escalate support tickets to the next administrative level'],
   ['evidence.view', 'View maintenance evidence'],
   ['evidence.submit', 'Upload maintenance evidence'],
   ['evidence.review', 'Accept, reject, or flag maintenance evidence'],
@@ -107,6 +113,10 @@ const facilityManagerPermissions = [
   'work_orders.update',
   'work_orders.resolve',
   'work_orders.verify',
+  'tickets.view',
+  'tickets.create',
+  'tickets.update',
+  'tickets.escalate',
   'evidence.view',
   'evidence.submit',
   'evidence.review',
@@ -528,6 +538,12 @@ async function seedDemoUsers() {
 async function main() {
   await seedPermissions();
   await seedRoles();
+
+  if (process.argv.includes('--access-only')) {
+    console.log(`Seeded ${permissions.length} permissions and refreshed ${roles.length} role permission sets.`);
+    return;
+  }
+
   await seedRewards();
   const { seededUsers, password } = await seedDemoUsers();
 

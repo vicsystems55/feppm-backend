@@ -159,12 +159,16 @@ enum TicketStatus {
   ACKNOWLEDGED
   ASSIGNED
   IN_PROGRESS
+  WAITING_ON_REPORTER
   AWAITING_PARTS
+  WAITING_ON_VENDOR
+  ESCALATED
   RESOLVED
   VERIFIED
   CLOSED
   REOPENED
   CANCELLED
+  DUPLICATE
 }
 
 enum TicketSourceType {
@@ -174,6 +178,37 @@ enum TicketSourceType {
   SUPERVISOR_OBSERVATION
   SCHEDULED_INSPECTION
   SYSTEM_ALERT
+}
+
+enum TicketType {
+  INCIDENT
+  SERVICE_REQUEST
+  COMPLAINT
+  SUGGESTION
+  TECHNICAL_SUPPORT
+}
+
+enum TicketCategory {
+  EQUIPMENT_FAULT
+  MAINTENANCE
+  TEMPERATURE_SAFETY
+  CHECKLIST
+  INVENTORY
+  ACCESS_ACCOUNT
+  DATA_QUALITY
+  COMPLAINT
+  SUGGESTION
+  TECHNICAL_SUPPORT
+  OTHER
+}
+
+enum TicketEscalationLevel {
+  FACILITY
+  LGA
+  STATE
+  ZONE
+  NATIONAL
+  PLATFORM
 }
 
 enum VerificationStatus {
@@ -251,6 +286,7 @@ model Organization {
   users               User[]
   administrativeUnits AdministrativeUnit[]
   facilities          Facility[]
+  tickets             MaintenanceTicket[]
   simulationSessions  SimulationSession[]
   pilots              PilotProject[]
   createdAt           DateTime             @default(now())
@@ -276,6 +312,7 @@ model AdministrativeUnit {
   children       AdministrativeUnit[]   @relation("AdministrativeTree")
   facilities     Facility[]
   userScopes     UserScope[]
+  tickets        MaintenanceTicket[]
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
@@ -383,7 +420,13 @@ model User {
   completedTasks      MaintenanceTask[]     @relation("CompletedTaskUser")
   evidence            EvidenceFile[]
   reportedTickets     MaintenanceTicket[]   @relation("TicketReporter")
-  assignedTickets     MaintenanceTicket[]   @relation("AssignedTechnician")
+  assignedTickets     MaintenanceTicket[]   @relation("AssignedTicketUser")
+  ticketActivities    TicketActivity[]
+  ticketComments      TicketComment[]
+  ticketAttachments   TicketAttachment[]
+  ticketAssignments   TicketAssignment[]    @relation("TicketAssignee")
+  assignedTicketWork  TicketAssignment[]    @relation("TicketAssignedBy")
+  ticketEscalations   TicketEscalation[]    @relation("TicketEscalatedBy")
   alertRecipients     AlertRecipient[]
   registeredDevices   RegisteredDevice[]
   rewardAccount       RewardAccount?
@@ -874,43 +917,66 @@ model AlertRecipient {
 }
 
 model MaintenanceTicket {
-  id                   String            @id @default(cuid())
-  ticketNumber         String            @unique
-  equipmentId          String
-  facilityId           String
+  id                   String                @id @default(cuid())
+  ticketNumber         String                @unique
+  organizationId       String
+  administrativeUnitId String?
+  equipmentId          String?
+  facilityId           String?
   maintenanceTaskId    String?
   reportedById         String
-  assignedTechnicianId String?
+  assignedToId         String?               @map("assignedTechnicianId")
+  type                 TicketType            @default(INCIDENT)
+  category             TicketCategory        @default(EQUIPMENT_FAULT)
   sourceType           TicketSourceType
   sourceId             String?
+  title                String
   faultDescription     String
-  severity             RiskLevel
-  priority             Int               @default(3)
-  status               TicketStatus      @default(OPEN)
-  reportedAt           DateTime          @default(now())
+  impact               RiskLevel             @default(MEDIUM)
+  urgency              RiskLevel             @default(MEDIUM)
+  severity             RiskLevel             @default(MEDIUM)
+  priority             Int                   @default(3)
+  status               TicketStatus          @default(OPEN)
+  escalationLevel      TicketEscalationLevel @default(FACILITY)
+  reportedAt           DateTime              @default(now())
   acknowledgedAt       DateTime?
+  firstResponseAt      DateTime?
+  responseDueAt        DateTime?
+  resolutionDueAt      DateTime?
+  slaPausedAt          DateTime?
+  totalPausedMinutes   Int                   @default(0)
   workStartedAt        DateTime?
   resolvedAt           DateTime?
   verifiedAt           DateTime?
   closedAt             DateTime?
+  resolutionSummary    String?               @db.Text
   downtimeMinutes      Int?
-  estimatedCost        Decimal?          @db.Decimal(14, 2)
-  actualCost           Decimal?          @db.Decimal(14, 2)
-  equipment            Equipment         @relation(fields: [equipmentId], references: [id])
-  facility             Facility          @relation(fields: [facilityId], references: [id])
-  maintenanceTask      MaintenanceTask?  @relation(fields: [maintenanceTaskId], references: [id])
-  reportedBy           User              @relation("TicketReporter", fields: [reportedById], references: [id])
-  assignedTechnician   User?             @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  estimatedCost        Decimal?              @db.Decimal(14, 2)
+  actualCost           Decimal?              @db.Decimal(14, 2)
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  administrativeUnit   AdministrativeUnit?   @relation(fields: [administrativeUnitId], references: [id])
+  equipment            Equipment?            @relation(fields: [equipmentId], references: [id])
+  facility             Facility?             @relation(fields: [facilityId], references: [id])
+  maintenanceTask      MaintenanceTask?      @relation(fields: [maintenanceTaskId], references: [id])
+  reportedBy           User                  @relation("TicketReporter", fields: [reportedById], references: [id])
+  assignedTo           User?                 @relation("AssignedTicketUser", fields: [assignedToId], references: [id])
   alerts               Alert[]
   activities           TicketActivity[]
+  comments             TicketComment[]
+  attachments          TicketAttachment[]
+  assignments          TicketAssignment[]
+  escalations          TicketEscalation[]
   diagnoses            TicketDiagnosis[]
   repairs              TicketRepair[]
   parts                TicketPart[]
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
+  @@index([organizationId, status])
+  @@index([administrativeUnitId, status])
   @@index([facilityId, status])
-  @@index([assignedTechnicianId, status])
+  @@index([assignedToId, status])
+  @@index([priority, status])
 }
 
 model TicketActivity {
@@ -921,10 +987,87 @@ model TicketActivity {
   comment   String?
   oldStatus TicketStatus?
   newStatus TicketStatus?
+  metadata  Json?
   ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id])
   createdAt DateTime          @default(now())
 
   @@index([ticketId, createdAt])
+}
+
+model TicketComment {
+  id          String             @id @default(cuid())
+  ticketId    String
+  authorId    String
+  body        String             @db.Text
+  isInternal  Boolean            @default(false)
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  ticket      MaintenanceTicket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User               @relation(fields: [authorId], references: [id])
+  attachments TicketAttachment[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([ticketId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model TicketAttachment {
+  id           String            @id @default(cuid())
+  ticketId     String
+  commentId    String?
+  uploadedById String
+  fileUrl      String
+  thumbnailUrl String?
+  fileName     String
+  mimeType     String
+  fileSize     Int
+  ticket       MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  comment      TicketComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  uploadedBy   User              @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime          @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([commentId])
+}
+
+model TicketAssignment {
+  id           String            @id @default(cuid())
+  ticketId     String
+  assignedToId String
+  assignedById String
+  reason       String?
+  startedAt    DateTime          @default(now())
+  endedAt      DateTime?
+  ticket       MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assignedTo   User              @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedBy   User              @relation("TicketAssignedBy", fields: [assignedById], references: [id])
+
+  @@index([ticketId, endedAt])
+  @@index([assignedToId, endedAt])
+}
+
+model TicketEscalation {
+  id            String                @id @default(cuid())
+  ticketId      String
+  fromLevel     TicketEscalationLevel
+  toLevel       TicketEscalationLevel
+  reason        String                @db.Text
+  automatic     Boolean               @default(false)
+  escalatedById String
+  ticket        MaintenanceTicket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  escalatedBy   User                  @relation("TicketEscalatedBy", fields: [escalatedById], references: [id])
+  createdAt     DateTime              @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([toLevel, createdAt])
+}
+
+model TicketSequence {
+  year         Int      @id
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
 }
 
 model TicketDiagnosis {
