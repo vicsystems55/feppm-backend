@@ -43,3 +43,13 @@ export function requirePermission(permissionKey) {
     return next();
   };
 }
+
+export function requireAnyPermission(...permissionKeys) {
+  return function authorizeAnyPermission(request, response, next) {
+    const permissions = request.auth?.permissions ?? [];
+    if (!permissionKeys.some((permissionKey) => permissions.includes(permissionKey))) {
+      return response.status(403).json({ success: false, message: 'You do not have permission to access this resource.' });
+    }
+    return next();
+  };
+}

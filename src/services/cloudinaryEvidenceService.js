@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 
 import { env } from '../config/env.js';
 
-export async function uploadEvidenceToCloudinary(file) {
+async function uploadImageToCloudinary(file, { folder, tags }) {
   if (!env.cloudinaryCloudName || !env.cloudinaryUploadPreset) {
     const error = new Error(
       'Cloudinary evidence storage is not configured on the backend.',
@@ -19,8 +19,8 @@ export async function uploadEvidenceToCloudinary(file) {
     file.originalname || file.filename,
   );
   data.append('upload_preset', env.cloudinaryUploadPreset);
-  data.append('folder', env.cloudinaryUploadFolder);
-  data.append('tags', 'feppm,checklist-evidence,mobile-verified');
+  data.append('folder', folder);
+  data.append('tags', tags);
 
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/image/upload`,
@@ -49,4 +49,18 @@ export async function uploadEvidenceToCloudinary(file) {
     bytes: payload.bytes,
     format: payload.format,
   };
+}
+
+export function uploadEvidenceToCloudinary(file) {
+  return uploadImageToCloudinary(file, {
+    folder: env.cloudinaryUploadFolder,
+    tags: 'feppm,checklist-evidence,mobile-verified',
+  });
+}
+
+export function uploadTicketAttachmentToCloudinary(file) {
+  return uploadImageToCloudinary(file, {
+    folder: env.cloudinaryTicketFolder,
+    tags: 'feppm,ticket-attachment,mobile-authenticated',
+  });
 }

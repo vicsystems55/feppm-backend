@@ -11,6 +11,7 @@ import {
 } from '../services/ticketNotificationService.js';
 import { findUserForAuthentication, userHasRole } from '../services/userAccessService.js';
 import {
+  allowedTicketTransitions,
   calculateSlaTargets,
   calculateTicketPriority,
   canTransitionTicket,
@@ -123,6 +124,28 @@ function paginationValue(value, fallback, maximum) {
 
 function hasPermission(request, key) {
   return request.auth?.permissions?.includes(key);
+}
+
+function ticketCapabilities(request, ticket) {
+  const canUpdate = hasPermission(request, 'tickets.update');
+  const canResolve = hasPermission(request, 'tickets.resolve');
+  const terminal = ['CLOSED', 'CANCELLED', 'DUPLICATE'].includes(ticket.status);
+  const allowedTransitions = canUpdate
+    ? allowedTicketTransitions(ticket.status).filter(
+      (status) => !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(status) || canResolve,
+    )
+    : [];
+  return {
+    canComment: canUpdate && !terminal,
+    canAssign: hasPermission(request, 'tickets.assign') && !terminal,
+    canEscalate: hasPermission(request, 'tickets.escalate')
+      && !terminal
+      && !['RESOLVED', 'VERIFIED'].includes(ticket.status)
+      && Boolean(nextEscalationLevel(ticket.escalationLevel)),
+    canResolve,
+    allowedTransitions,
+    nextEscalationLevel: nextEscalationLevel(ticket.escalationLevel),
+  };
 }
 
 function isSuperAdmin(user) {
@@ -313,9 +336,38 @@ export async function createTicket(request, response) {
   const sla = calculateSlaTargets(priority, now);
   const ticketNumber = await nextTicketNumber();
   const attachments = normalizeTicketAttachments(request.body?.attachments);
+  const clientRequestId = clean(
+    request.body?.clientRequestId ?? request.get('idempotency-key'),
+    191,
+  ) || null;
 
-  const ticket = await prisma.maintenanceTicket.create({
-    data: {
+  if (clientRequestId) {
+    const existing = await prisma.maintenanceTicket.findUnique({
+      where: {
+        reportedById_clientRequestId: {
+          reportedById: request.authUser.id,
+          clientRequestId,
+        },
+      },
+      include: ticketDetailsInclude,
+    });
+    if (existing) {
+      return response.json({
+        success: true,
+        message: `${existing.ticketNumber} was already submitted.`,
+        data: {
+          ticket: existing,
+          capabilities: ticketCapabilities(request, existing),
+          duplicatePrevented: true,
+        },
+      });
+    }
+  }
+
+  let ticket;
+  try {
+    ticket = await prisma.maintenanceTicket.create({
+      data: {
       ticketNumber,
       organizationId,
       administrativeUnitId,
@@ -327,6 +379,7 @@ export async function createTicket(request, response) {
       category,
       sourceType,
       sourceId: clean(request.body?.sourceId, 191) || null,
+      clientRequestId,
       title,
       faultDescription: description,
       impact,
@@ -355,16 +408,41 @@ export async function createTicket(request, response) {
           },
         }
         : {}),
-    },
-    include: ticketDetailsInclude,
-  });
+      },
+      include: ticketDetailsInclude,
+    });
+  } catch (error) {
+    if (clientRequestId && error?.code === 'P2002') {
+      const existing = await prisma.maintenanceTicket.findUnique({
+        where: {
+          reportedById_clientRequestId: {
+            reportedById: request.authUser.id,
+            clientRequestId,
+          },
+        },
+        include: ticketDetailsInclude,
+      });
+      if (existing) {
+        return response.json({
+          success: true,
+          message: `${existing.ticketNumber} was already submitted.`,
+          data: {
+            ticket: existing,
+            capabilities: ticketCapabilities(request, existing),
+            duplicatePrevented: true,
+          },
+        });
+      }
+    }
+    throw error;
+  }
   await notifyTicketCreatedInApp(ticket.id, request.authUser.id);
   void notifyTicketCreated(ticket.id, request.authUser.id);
 
   return response.status(201).json({
     success: true,
     message: `Ticket ${ticket.ticketNumber} created.`,
-    data: { ticket },
+    data: { ticket, capabilities: ticketCapabilities(request, ticket) },
   });
 }
 
@@ -375,6 +453,7 @@ export async function listTickets(request, response) {
   const status = enumValue(request.query.status, ticketStatuses);
   const type = enumValue(request.query.type, ticketTypes);
   const category = enumValue(request.query.category, ticketCategories);
+  const updatedAfter = new Date(request.query.updatedAfter);
   const priority = Number.parseInt(request.query.priority, 10);
   const scopeWhere = await ticketScopeWhere(request.authUser);
   const filters = {
@@ -383,6 +462,7 @@ export async function listTickets(request, response) {
     ...(category ? { category } : {}),
     ...(priority >= 1 && priority <= 4 ? { priority } : {}),
     ...(clean(request.query.facilityId, 191) ? { facilityId: clean(request.query.facilityId, 191) } : {}),
+    ...(!Number.isNaN(updatedAfter.getTime()) ? { updatedAt: { gt: updatedAfter } } : {}),
   };
   const where = {
     AND: [
@@ -463,6 +543,8 @@ export async function getTicketOptions(request, response) {
         name: true,
         facilityCode: true,
         administrativeUnitId: true,
+        latitude: true,
+        longitude: true,
         equipment: {
           where: { status: 'ACTIVE' },
           select: {
@@ -515,7 +597,10 @@ export async function getTicketOptions(request, response) {
 export async function getTicket(request, response) {
   const ticket = await accessibleTicket(request.params.id, request.authUser);
   if (!ticket) throw httpError(404, 'Ticket not found in your authorized scope.');
-  return response.json({ success: true, data: { ticket } });
+  return response.json({
+    success: true,
+    data: { ticket, capabilities: ticketCapabilities(request, ticket) },
+  });
 }
 
 export async function updateTicketStatus(request, response) {

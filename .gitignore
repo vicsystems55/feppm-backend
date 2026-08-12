@@ -4,3 +4,5 @@ coverage/
 dist/
 *.log
 uploads/
+prisma/generated/
+prisma/mysql-source.prisma

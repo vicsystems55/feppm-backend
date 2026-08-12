@@ -55,6 +55,10 @@ export function canTransitionTicket(fromStatus, toStatus) {
   return workflow[fromStatus]?.includes(toStatus) ?? false;
 }
 
+export function allowedTicketTransitions(status) {
+  return [...(workflow[status] ?? [])];
+}
+
 export function nextEscalationLevel(currentLevel) {
   const index = escalationOrder.indexOf(currentLevel);
   if (index < 0 || index === escalationOrder.length - 1) return null;

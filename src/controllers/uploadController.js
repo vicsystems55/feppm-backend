@@ -2,7 +2,10 @@ import fs from 'node:fs/promises';
 
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
-import { uploadEvidenceToCloudinary } from '../services/cloudinaryEvidenceService.js';
+import {
+  uploadEvidenceToCloudinary,
+  uploadTicketAttachmentToCloudinary,
+} from '../services/cloudinaryEvidenceService.js';
 import {
   createEvidenceToken,
   distanceMeters,
@@ -199,6 +202,45 @@ export async function uploadChecklistEvidence(request, response) {
           ? `Demo mode: this photo was captured ${Math.round(distanceFromFacilityMeters)} metres from ${task.facility.name}.`
           : null,
       },
+    });
+  } catch (error) {
+    await discard(request.file);
+    throw error;
+  }
+}
+
+export async function uploadTicketAttachment(request, response) {
+  if (!request.file) {
+    return response.status(400).json({
+      success: false,
+      message: 'Select a ticket photo to upload.',
+    });
+  }
+
+  try {
+    if (!await hasValidImageSignature(request.file)) {
+      await discard(request.file);
+      return response.status(400).json({
+        success: false,
+        message: 'The uploaded ticket attachment is not a valid image.',
+      });
+    }
+
+    const uploaded = await uploadTicketAttachmentToCloudinary(request.file);
+    const attachment = {
+      fileUrl: uploaded.fileUrl,
+      thumbnailUrl: uploaded.thumbnailUrl,
+      fileName: String(request.file.originalname || request.file.filename)
+        .trim()
+        .slice(0, 255),
+      mimeType: request.file.mimetype,
+      fileSize: request.file.size,
+    };
+    await discard(request.file);
+    return response.status(201).json({
+      success: true,
+      message: 'Ticket photo uploaded successfully.',
+      data: { attachment },
     });
   } catch (error) {
     await discard(request.file);

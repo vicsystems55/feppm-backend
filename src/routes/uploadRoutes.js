@@ -1,8 +1,16 @@
 import { Router } from 'express';
 
-import { uploadChecklistEvidence } from '../controllers/uploadController.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import {
+  uploadChecklistEvidence,
+  uploadTicketAttachment,
+} from '../controllers/uploadController.js';
+import {
+  authenticate,
+  requireAnyPermission,
+  requireRole,
+} from '../middleware/auth.js';
 import { uploadEvidenceImage } from '../middleware/evidenceUpload.js';
+import { uploadTicketImage } from '../middleware/ticketUpload.js';
 
 const router = Router();
 
@@ -12,6 +20,14 @@ router.post(
   requireRole('FACILITY_MANAGER'),
   uploadEvidenceImage,
   uploadChecklistEvidence,
+);
+
+router.post(
+  '/ticket-attachment',
+  authenticate,
+  requireAnyPermission('tickets.create', 'tickets.update'),
+  uploadTicketImage,
+  uploadTicketAttachment,
 );
 
 export default router;

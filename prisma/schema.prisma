@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum RecordStatus {
@@ -930,6 +931,7 @@ model MaintenanceTicket {
   category             TicketCategory        @default(EQUIPMENT_FAULT)
   sourceType           TicketSourceType
   sourceId             String?
+  clientRequestId      String?
   title                String
   faultDescription     String
   impact               RiskLevel             @default(MEDIUM)
@@ -972,6 +974,7 @@ model MaintenanceTicket {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
+  @@unique([reportedById, clientRequestId])
   @@index([organizationId, status])
   @@index([administrativeUnitId, status])
   @@index([facilityId, status])

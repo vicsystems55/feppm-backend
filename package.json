@@ -9,6 +9,8 @@
     "test": "node --test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
     "prisma:seed": "node prisma/seed.js",
     "seed:access-control": "node prisma/seed.js --access-only",
     "import:gombe": "node scripts/importGombeFacilities.js",
@@ -16,7 +18,11 @@
     "seed:cold-chain-checklists": "node scripts/seedColdChainChecklists.js",
     "seed:rewards": "node scripts/seedRewards.js",
     "email:test": "node scripts/sendTestEmail.js",
-    "import:gombe-equipment": "node scripts/importGombeEquipment.js"
+    "import:gombe-equipment": "node scripts/importGombeEquipment.js",
+    "migration:prepare-mysql": "node scripts/prepareMysqlSourceClient.js",
+    "migration:mysql-to-postgres": "node scripts/migrateMysqlToPostgres.js",
+    "migration:trial": "node scripts/runLocalMigrationTrial.js",
+    "supabase:check": "node scripts/checkSupabaseConnection.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",

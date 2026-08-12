@@ -4,19 +4,26 @@ Express and Prisma API for the FEPPM platform.
 
 ## Database
 
-FEPPM uses MySQL through Prisma.
+FEPPM uses PostgreSQL through Prisma.
 
-- Local development: XAMPP MySQL and phpMyAdmin
-- Remote environment: Clever Cloud MySQL add-on
+- Local development: PostgreSQL 18
+- Remote environment: managed Supabase PostgreSQL
 
-Create a local database named `feppm`, then use the XAMPP connection string from `.env.example`. If your MySQL root user has a password, place it between `root:` and `@` in the URL. URL-encode special characters in database credentials.
+Create a local database named `feppm`, then configure both `DATABASE_URL` and `DIRECT_URL` from `.env.example`. `DATABASE_URL` is used by the running API; `DIRECT_URL` is used by Prisma migrations. For local PostgreSQL they may be identical.
+
+The original MySQL migration history is preserved in `prisma/mysql_migrations_archive` for audit and data-transfer work. PostgreSQL and Supabase use the fresh baseline in `prisma/migrations`; do not replay the archived MySQL SQL against PostgreSQL.
+
+For Supabase, use the session pooler connection for the persistent Render API when IPv4 is required. Prefer the direct database connection for Prisma migrations when the deployment environment supports IPv6.
+
+Follow [the online Supabase setup checkpoint](docs/supabase-online-setup.md) before applying the production baseline or importing MySQL data.
 
 ## Development
 
 1. Copy `.env.example` to `.env` and update the values.
 2. Run `npm install`.
 3. Run `npm run prisma:generate`.
-4. Run `npm run dev`.
+4. Run `npm run prisma:deploy`.
+5. Run `npm run dev`.
 
 ## Seed data
 

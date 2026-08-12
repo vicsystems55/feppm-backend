@@ -34,6 +34,7 @@ export const env = Object.freeze({
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
   cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? '',
   cloudinaryUploadFolder: process.env.CLOUDINARY_UPLOAD_FOLDER ?? 'feppm/photos',
+  cloudinaryTicketFolder: process.env.CLOUDINARY_TICKET_FOLDER ?? 'feppm/tickets',
   resendApiKey: process.env.RESEND_API_KEY ?? '',
   emailFrom: process.env.RESEND_FROM_EMAIL ?? '',
   emailReplyTo: process.env.RESEND_REPLY_TO ?? '',
