@@ -22,7 +22,8 @@
     "migration:prepare-mysql": "node scripts/prepareMysqlSourceClient.js",
     "migration:mysql-to-postgres": "node scripts/migrateMysqlToPostgres.js",
     "migration:trial": "node scripts/runLocalMigrationTrial.js",
-    "supabase:check": "node scripts/checkSupabaseConnection.js"
+    "supabase:check": "node scripts/checkSupabaseConnection.js",
+    "maintenance:verify-outbox": "node scripts/verifyMaintenanceOutbox.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",

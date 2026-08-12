@@ -21,9 +21,15 @@ const webAppRoles = new Set([
   'STATE_ADMIN',
   'LGA_ADMIN',
   'FACILITY_MANAGER',
+  'NATIONAL_MAINTENANCE_MANAGER',
+  'STATE_MAINTENANCE_MANAGER',
+  'MAINTENANCE_SCHEDULER',
+  'TECHNICIAN',
+  'VENDOR_ADMIN',
+  'VENDOR_TECHNICIAN',
 ]);
 
-function hasWebAppAccess(user) {
+export function hasWebAppAccess(user) {
   return user.roles.some(({ role }) => webAppRoles.has(role.key));
 }
 

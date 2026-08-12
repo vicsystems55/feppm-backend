@@ -62,6 +62,12 @@ const permissions = [
   ['reports.view', 'View operational and management reports'],
   ['reports.export', 'Export reports'],
   ['notifications.manage', 'Manage notification rules and delivery settings'],
+  ['maintenance_operations.view', 'View the Maintenance Operations dashboard and queue'],
+  ['maintenance_requests.triage', 'Assess maintenance requests and record triage decisions'],
+  ['technicians.view', 'View technician profiles, skills, and availability'],
+  ['technicians.manage', 'Create and update technician profiles and skills'],
+  ['vendor_contracts.view', 'View vendor contracts and covered facilities or equipment'],
+  ['vendor_contracts.manage', 'Create and update vendor contracts and coverage'],
 ];
 
 const allPermissionKeys = permissions.map(([key]) => key);
@@ -128,6 +134,60 @@ const facilityManagerPermissions = [
   'notifications.manage',
 ];
 
+const maintenanceManagementPermissions = [
+  'organizations.view',
+  'administrative_units.view',
+  'facilities.view',
+  'equipment.view',
+  'equipment.status.change',
+  'sops.view',
+  'maintenance_tasks.view',
+  'work_orders.view',
+  'work_orders.create',
+  'work_orders.assign',
+  'work_orders.update',
+  'work_orders.resolve',
+  'work_orders.verify',
+  'tickets.view',
+  'tickets.update',
+  'tickets.assign',
+  'tickets.resolve',
+  'tickets.escalate',
+  'evidence.view',
+  'evidence.submit',
+  'alerts.view',
+  'reports.view',
+  'reports.export',
+  'maintenance_operations.view',
+  'maintenance_requests.triage',
+  'technicians.view',
+  'technicians.manage',
+  'vendor_contracts.view',
+  'vendor_contracts.manage',
+];
+
+const schedulerPermissions = maintenanceManagementPermissions.filter((key) => ![
+  'work_orders.verify',
+  'tickets.resolve',
+  'reports.export',
+  'technicians.manage',
+  'vendor_contracts.manage',
+].includes(key));
+
+const technicianPermissions = [
+  'facilities.view',
+  'equipment.view',
+  'sops.view',
+  'work_orders.view',
+  'work_orders.update',
+  'evidence.view',
+  'evidence.submit',
+  'notifications.manage',
+  'maintenance_operations.view',
+  'technicians.view',
+  'vendor_contracts.view',
+];
+
 const roles = [
   {
     key: 'SUPER_ADMIN',
@@ -164,6 +224,42 @@ const roles = [
     name: 'Facility Manager',
     description: 'Manager responsible for assigned facilities, equipment, users, and maintenance operations.',
     permissionKeys: facilityManagerPermissions,
+  },
+  {
+    key: 'NATIONAL_MAINTENANCE_MANAGER',
+    name: 'National Maintenance Manager',
+    description: 'Coordinates maintenance operations, technicians, vendors, and work orders nationally.',
+    permissionKeys: maintenanceManagementPermissions,
+  },
+  {
+    key: 'STATE_MAINTENANCE_MANAGER',
+    name: 'State Maintenance Manager',
+    description: 'Coordinates maintenance requests, resources, and work orders within an assigned state.',
+    permissionKeys: maintenanceManagementPermissions,
+  },
+  {
+    key: 'MAINTENANCE_SCHEDULER',
+    name: 'Maintenance Scheduler',
+    description: 'Triages requests and coordinates technician or vendor assignments within an assigned scope.',
+    permissionKeys: schedulerPermissions,
+  },
+  {
+    key: 'TECHNICIAN',
+    name: 'Technician / Engineer',
+    description: 'Receives and executes authorized technical maintenance work.',
+    permissionKeys: technicianPermissions,
+  },
+  {
+    key: 'VENDOR_ADMIN',
+    name: 'Vendor Administrator',
+    description: 'Coordinates work assigned to an approved vendor under active contract coverage.',
+    permissionKeys: schedulerPermissions,
+  },
+  {
+    key: 'VENDOR_TECHNICIAN',
+    name: 'Vendor Technician',
+    description: 'Executes vendor work orders limited to assigned contract coverage.',
+    permissionKeys: technicianPermissions,
   },
 ];
 
@@ -203,6 +299,17 @@ const badges = [
     description: 'Earned the first one hundred FEPPM reward points.',
     icon: 'star',
   },
+];
+
+const maintenanceSkills = [
+  ['COLD_CHAIN', 'Cold Chain Equipment', 'Diagnosis and repair of vaccine cold-chain equipment.'],
+  ['REFRIGERATION', 'Refrigeration', 'Refrigeration systems, compressors, condensers, and cooling circuits.'],
+  ['ELECTRICAL', 'Electrical Systems', 'Electrical diagnosis, wiring, protection, and power systems.'],
+  ['SOLAR', 'Solar Systems', 'Solar panels, controllers, batteries, and solar direct-drive systems.'],
+  ['GENERATOR', 'Generator Systems', 'Generator inspection, service, and fault repair.'],
+  ['AIR_CONDITIONING', 'Air Conditioning', 'Air-conditioning installation, servicing, and repair.'],
+  ['BIOMEDICAL', 'Biomedical Equipment', 'Biomedical equipment inspection, diagnosis, and repair.'],
+  ['REMOTE_SUPPORT', 'Remote Technical Support', 'Remote diagnosis and guided technical support.'],
 ];
 
 const demoUsers = [
@@ -324,6 +431,16 @@ async function seedRewards() {
       where: { name: badge.name },
       update: badge,
       create: badge,
+    });
+  }
+}
+
+async function seedMaintenanceSkills() {
+  for (const [code, name, description] of maintenanceSkills) {
+    await prisma.maintenanceSkill.upsert({
+      where: { code },
+      update: { name, description, status: 'ACTIVE' },
+      create: { code, name, description, status: 'ACTIVE' },
     });
   }
 }
@@ -538,9 +655,10 @@ async function seedDemoUsers() {
 async function main() {
   await seedPermissions();
   await seedRoles();
+  await seedMaintenanceSkills();
 
   if (process.argv.includes('--access-only')) {
-    console.log(`Seeded ${permissions.length} permissions and refreshed ${roles.length} role permission sets.`);
+    console.log(`Seeded ${permissions.length} permissions, refreshed ${roles.length} role permission sets, and seeded ${maintenanceSkills.length} maintenance skills.`);
     return;
   }
 
