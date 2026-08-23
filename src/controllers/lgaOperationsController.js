@@ -122,7 +122,34 @@ const equipmentSelect = {
   nonFunctionalReason: true,
   source: true,
   status: true,
-  facility: { select: { id: true, name: true } },
+  facility: {
+    select: {
+      id: true,
+      name: true,
+      administrativeUnit: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          parent: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              parent: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  parent: { select: { id: true, name: true, type: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   department: { select: { id: true, name: true } },
   equipmentType: {
     select: {
@@ -194,7 +221,15 @@ export async function getLgaEquipment(request, response) {
   const equipment = await prisma.equipment.findFirst({
     where: { id: request.params.id, facility: access.facilityWhere },
     include: {
-      facility: { select: { id: true, name: true } },
+      facility: {
+        select: {
+          id: true,
+          name: true,
+          administrativeUnit: {
+            include: { parent: { include: { parent: { include: { parent: true } } } } },
+          },
+        },
+      },
       department: { select: { id: true, name: true } },
       equipmentType: { include: { category: true } },
       equipmentModel: { include: { manufacturer: true } },
@@ -213,7 +248,7 @@ export async function getLgaEquipment(request, response) {
   if (!equipment) {
     return response.status(404).json({
       success: false,
-      message: 'Equipment was not found in your LGA scope.',
+      message: 'Equipment was not found in your authorized scope.',
     });
   }
   return response.json({ success: true, data: { equipment } });

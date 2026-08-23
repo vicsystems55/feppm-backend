@@ -180,6 +180,7 @@ const technicianPermissions = [
   'sops.view',
   'work_orders.view',
   'work_orders.update',
+  'work_orders.resolve',
   'evidence.view',
   'evidence.submit',
   'notifications.manage',
@@ -338,6 +339,20 @@ const demoUsers = [
     firstName: 'Fatima',
     lastName: 'Ibrahim',
     email: 'state.admin@feppm.demo',
+    scope: 'state',
+  },
+  {
+    roleKey: 'STATE_MAINTENANCE_MANAGER',
+    firstName: 'Musa',
+    lastName: 'Abubakar',
+    email: 'state.maintenance@feppm.demo',
+    scope: 'state',
+  },
+  {
+    roleKey: 'TECHNICIAN',
+    firstName: 'Ibrahim',
+    lastName: 'Yusuf',
+    email: 'technician@feppm.demo',
     scope: 'state',
   },
   {
@@ -596,7 +611,9 @@ async function seedDemoUsers() {
   for (const definition of demoUsers) {
     const roleId = roleIds.get(definition.roleKey);
     if (!roleId) throw new Error(`Role not found during demo-user seed: ${definition.roleKey}`);
-    const useGombeScope = definition.roleKey === 'STATE_ADMIN' && gombeOrganization && gombeState;
+    const useGombeScope = ['STATE_ADMIN', 'STATE_MAINTENANCE_MANAGER', 'TECHNICIAN'].includes(definition.roleKey)
+      && gombeOrganization
+      && gombeState;
     const assignedOrganization = useGombeScope ? gombeOrganization : organization;
     const assignedScope = useGombeScope ? gombeState : scopes[definition.scope];
 
@@ -640,7 +657,49 @@ async function seedDemoUsers() {
       ...user,
       roleKey: definition.roleKey,
       scope: definition.scope ?? (definition.facility ? 'facility' : 'platform'),
+      assignedScopeId: assignedScope?.id ?? null,
     });
+  }
+
+  const technician = seededUsers.find((user) => user.roleKey === 'TECHNICIAN');
+  if (technician) {
+    const profile = await prisma.technicianProfile.upsert({
+      where: { userId: technician.id },
+      update: {
+        organizationId: technician.organizationId,
+        baseAdministrativeUnitId: technician.assignedScopeId,
+        workerType: 'GOVERNMENT',
+        jobTitle: 'Cold Chain Technician',
+        yearsExperience: 4,
+        availabilityStatus: 'AVAILABLE',
+        status: 'ACTIVE',
+      },
+      create: {
+        userId: technician.id,
+        organizationId: technician.organizationId,
+        baseAdministrativeUnitId: technician.assignedScopeId,
+        workerType: 'GOVERNMENT',
+        jobTitle: 'Cold Chain Technician',
+        yearsExperience: 4,
+        availabilityStatus: 'AVAILABLE',
+        status: 'ACTIVE',
+      },
+    });
+    const skillRecords = await prisma.maintenanceSkill.findMany({
+      where: { code: { in: ['COLD_CHAIN', 'ELECTRICAL', 'SOLAR'] } },
+      select: { id: true, code: true },
+    });
+    await prisma.$transaction([
+      prisma.technicianSkill.deleteMany({ where: { technicianProfileId: profile.id } }),
+      prisma.technicianSkill.createMany({
+        data: skillRecords.map((skill) => ({
+          technicianProfileId: profile.id,
+          maintenanceSkillId: skill.id,
+          proficiencyLevel: skill.code === 'COLD_CHAIN' ? 'ADVANCED' : 'INTERMEDIATE',
+          certified: skill.code === 'COLD_CHAIN',
+        })),
+      }),
+    ]);
   }
 
   const facilityManager = seededUsers.find((user) => user.roleKey === 'FACILITY_MANAGER');

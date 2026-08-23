@@ -66,11 +66,71 @@ async function nextWorkOrderNumber() {
   return `FEPPM-WO-${year}-${String(sequence.currentValue).padStart(6, '0')}`;
 }
 
+async function maintenanceFacilityMap(user, roleKey) {
+  if (!['STATE_MAINTENANCE_MANAGER', 'MAINTENANCE_SCHEDULER'].includes(roleKey)) return null;
+  const scope = await maintenanceScope(user);
+  const facilities = await prisma.facility.findMany({
+    where: { ...scope.facilityWhere, status: 'ACTIVE', latitude: { not: null }, longitude: { not: null } },
+    select: {
+      id: true, name: true, facilityCode: true, facilityType: true, address: true,
+      latitude: true, longitude: true, contactPhone: true, manager: { select: personSelect },
+      administrativeUnit: { select: { id: true, name: true, type: true, parent: { select: { id: true, name: true, type: true } } } },
+      equipment: { select: { id: true, assetCode: true, functionalityStatus: true, equipmentType: { select: { name: true } } } },
+      tickets: {
+        where: { status: { in: activeTicketStatuses } },
+        orderBy: [{ priority: 'asc' }, { reportedAt: 'desc' }],
+        select: { id: true, ticketNumber: true, title: true, priority: true, severity: true, status: true, reportedAt: true, equipment: { select: { assetCode: true } } },
+      },
+      alerts: {
+        where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] } },
+        orderBy: { triggeredAt: 'desc' },
+        select: { id: true, title: true, severity: true, status: true, triggeredAt: true },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  const markers = facilities.map((facility) => {
+    const equipment = Object.fromEntries(['FUNCTIONAL', 'PARTIALLY_FUNCTIONAL', 'NON_FUNCTIONAL', 'DECOMMISSIONED', 'UNKNOWN'].map((status) => [status, 0]));
+    facility.equipment.forEach((item) => { equipment[item.functionalityStatus] = (equipment[item.functionalityStatus] ?? 0) + 1; });
+    const criticalIssues = facility.tickets.filter((ticket) => ticket.priority === 1 || ticket.severity === 'CRITICAL').length
+      + facility.alerts.filter((alert) => alert.severity === 'CRITICAL').length;
+    const condition = criticalIssues > 0 || equipment.NON_FUNCTIONAL > 0
+      ? 'CRITICAL'
+      : facility.tickets.length > 0 || facility.alerts.length > 0 || equipment.PARTIALLY_FUNCTIONAL > 0
+        ? 'ATTENTION'
+        : facility.equipment.length > 0 ? 'HEALTHY' : 'NO_DATA';
+    return {
+      id: facility.id,
+      name: facility.name,
+      facilityCode: facility.facilityCode,
+      facilityType: facility.facilityType,
+      address: facility.address,
+      latitude: Number(facility.latitude),
+      longitude: Number(facility.longitude),
+      contactPhone: facility.contactPhone,
+      manager: facility.manager,
+      administrativeUnit: facility.administrativeUnit,
+      lga: facility.administrativeUnit.type === 'LGA' ? facility.administrativeUnit.name : facility.administrativeUnit.parent?.type === 'LGA' ? facility.administrativeUnit.parent.name : null,
+      condition,
+      equipmentTotal: facility.equipment.length,
+      equipment,
+      activeIssueCount: facility.tickets.length,
+      openAlertCount: facility.alerts.length,
+      criticalIssueCount: criticalIssues,
+      issues: facility.tickets.slice(0, 5),
+      alerts: facility.alerts.slice(0, 5),
+    };
+  });
+  const summary = markers.reduce((result, marker) => { result[marker.condition] += 1; return result; }, { HEALTHY: 0, ATTENTION: 0, CRITICAL: 0, NO_DATA: 0 });
+  return { markers, summary, facilitiesWithCoordinates: markers.length };
+}
+
 export async function getMaintenanceDashboard(request, response) {
   const roleKey = ['NATIONAL_MAINTENANCE_MANAGER', 'STATE_MAINTENANCE_MANAGER', 'MAINTENANCE_SCHEDULER', 'TECHNICIAN', 'VENDOR_ADMIN', 'VENDOR_TECHNICIAN']
     .find((key) => userHasRole(request.authUser, key)) ?? 'STATE_MAINTENANCE_MANAGER';
   const scopedTicketWhere = await maintenanceTicketWhere(request.authUser);
-  const [requestGroups, workOrderGroups, availableTechnicians, expiringContracts] = await Promise.all([
+  const [requestGroups, workOrderGroups, availableTechnicians, expiringContracts, facilityMap] = await Promise.all([
     prisma.maintenanceTicket.groupBy({
       by: ['status', 'priority'],
       where: { ...scopedTicketWhere, category: { in: ['EQUIPMENT_FAULT', 'MAINTENANCE', 'TEMPERATURE_SAFETY', 'CHECKLIST', 'TECHNICAL_SUPPORT'] } },
@@ -79,11 +139,12 @@ export async function getMaintenanceDashboard(request, response) {
     prisma.maintenanceWorkOrder.groupBy({ by: ['status'], where: await maintenanceWorkOrderWhere(request.authUser), _count: { _all: true } }),
     prisma.technicianProfile.count({ where: { organizationId: request.authUser.organization.id, status: 'ACTIVE', availabilityStatus: 'AVAILABLE' } }),
     prisma.vendorContract.count({ where: { organizationId: request.authUser.organization.id, status: 'ACTIVE', endsAt: { lte: new Date(Date.now() + 30 * 86400000), gte: new Date() } } }),
+    maintenanceFacilityMap(request.authUser, roleKey),
   ]);
   const activeRequests = requestGroups.filter(({ status }) => activeTicketStatuses.includes(status)).reduce((sum, item) => sum + item._count._all, 0);
   const criticalRequests = requestGroups.filter(({ status, priority }) => activeTicketStatuses.includes(status) && priority === 1).reduce((sum, item) => sum + item._count._all, 0);
   const workOrders = Object.fromEntries(workOrderGroups.map((item) => [item.status, item._count._all]));
-  response.json({ success: true, data: { roleKey, summary: { activeRequests, criticalRequests, untriagedRequests: await prisma.maintenanceTicket.count({ where: { ...scopedTicketWhere, category: { in: ['EQUIPMENT_FAULT', 'MAINTENANCE', 'TEMPERATURE_SAFETY', 'CHECKLIST', 'TECHNICAL_SUPPORT'] }, status: { in: activeTicketStatuses }, triage: { is: null } } }), activeWorkOrders: workOrderGroups.filter(({ status }) => !['COMPLETED', 'CANCELLED'].includes(status)).reduce((sum, item) => sum + item._count._all, 0), awaitingApproval: workOrders.PENDING_APPROVAL ?? 0, availableTechnicians, expiringContracts }, workOrderStatus: workOrders } });
+  response.json({ success: true, data: { roleKey, summary: { activeRequests, criticalRequests, untriagedRequests: await prisma.maintenanceTicket.count({ where: { ...scopedTicketWhere, category: { in: ['EQUIPMENT_FAULT', 'MAINTENANCE', 'TEMPERATURE_SAFETY', 'CHECKLIST', 'TECHNICAL_SUPPORT'] }, status: { in: activeTicketStatuses }, triage: { is: null } } }), activeWorkOrders: workOrderGroups.filter(({ status }) => !['COMPLETED', 'CANCELLED'].includes(status)).reduce((sum, item) => sum + item._count._all, 0), awaitingApproval: workOrders.PENDING_APPROVAL ?? 0, availableTechnicians, expiringContracts }, workOrderStatus: workOrders, facilityMap } });
 }
 
 export async function listMaintenanceRequests(request, response) {
@@ -154,7 +215,7 @@ export async function createWorkOrderFromRequest(request, response) {
     const contract = await prisma.vendorContract.findFirst({ where: { id: vendorContractId, organizationId: ticket.organizationId, status: 'ACTIVE', startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }], facilities: ticket.facilityId ? { some: { facilityId: ticket.facilityId } } : undefined, equipmentTypes: ticket.equipment?.equipmentType?.id ? { some: { equipmentTypeId: ticket.equipment.equipmentType.id } } : undefined } });
     if (!contract) throw httpError(400, 'The selected vendor contract does not cover this request.');
   }
-  const status = assignedTechnicianId || vendorContractId ? 'ASSIGNED' : 'DRAFT';
+  const status = 'DRAFT';
   const workOrderNumber = await nextWorkOrderNumber();
   const [workOrder] = await prisma.$transaction([
     prisma.maintenanceWorkOrder.create({ data: { workOrderNumber, ticketId: ticket.id, triageId: ticket.triage.id, organizationId: ticket.organizationId, administrativeUnitId: ticket.administrativeUnitId, facilityId: ticket.facilityId, equipmentId: ticket.equipmentId, assignedTechnicianId, vendorContractId, createdById: request.authUser.id, title, description, priority: ticket.priority, status, plannedStartAt: dateValue(request.body?.plannedStartAt), plannedEndAt: dateValue(request.body?.plannedEndAt), estimatedCost: request.body?.estimatedCost || null }, include: workOrderInclude }),

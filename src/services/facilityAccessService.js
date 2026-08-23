@@ -4,6 +4,12 @@ function hasRole(user, key) {
   return user.roles.some(({ role }) => role.key === key);
 }
 
+const organizationWideRoles = new Set(['NATIONAL_ADMIN', 'NATIONAL_MAINTENANCE_MANAGER']);
+
+function hasOrganizationWideRole(user) {
+  return user.roles.some(({ role }) => organizationWideRoles.has(role.key));
+}
+
 async function descendantUnitIds(rootIds) {
   const ids = new Set(rootIds);
   let frontier = [...rootIds];
@@ -33,10 +39,17 @@ export async function resolveFacilityAccess(user) {
   }
 
   const scopeIds = user.scopes.map(({ administrativeUnit }) => administrativeUnit.id);
-  if (!scopeIds.length || hasRole(user, 'NATIONAL_ADMIN')) {
+  if (hasOrganizationWideRole(user)) {
     return {
       facilityWhere: { organizationId: user.organization.id },
       administrativeUnitWhere: { organizationId: user.organization.id },
+    };
+  }
+
+  if (!scopeIds.length) {
+    return {
+      facilityWhere: { organizationId: user.organization.id, id: '__none__' },
+      administrativeUnitWhere: { organizationId: user.organization.id, id: '__none__' },
     };
   }
 
