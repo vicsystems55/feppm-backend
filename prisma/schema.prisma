@@ -408,6 +408,9 @@ model Facility {
   geofenceRadiusMeters   Int                      @default(250)
   contactPhone           String?
   contactEmail           String?
+  source                 String?
+  sourceFingerprint      String?
+  sourceData             Json?
   timezone               String                   @default("Africa/Lagos")
   status                 RecordStatus             @default(ACTIVE)
   organization           Organization             @relation(fields: [organizationId], references: [id])
@@ -434,6 +437,7 @@ model Facility {
   @@unique([organizationId, facilityCode])
   @@index([administrativeUnitId])
   @@index([status])
+  @@index([sourceFingerprint])
 }
 
 model FacilityContact {
@@ -673,6 +677,8 @@ model Equipment {
   underWarranty                   Boolean?
   source                          String?
   sourceRowNumber                 Int?
+  sourceFingerprint               String?
+  sourceData                      Json?
   functionalityStatus             EquipmentFunctionalityStatus @default(UNKNOWN)
   conditionStatus                 EquipmentConditionStatus     @default(UNKNOWN)
   warrantyStartDate               DateTime?
@@ -705,6 +711,7 @@ model Equipment {
   @@index([equipmentTypeId])
   @@index([functionalityStatus])
   @@index([warrantyEndDate])
+  @@index([sourceFingerprint])
 }
 
 model EquipmentStatusHistory {

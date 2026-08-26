@@ -6,3 +6,4 @@ dist/
 uploads/
 prisma/generated/
 prisma/mysql-source.prisma
+reports/generated/

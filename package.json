@@ -19,6 +19,10 @@
     "seed:rewards": "node scripts/seedRewards.js",
     "email:test": "node scripts/sendTestEmail.js",
     "import:gombe-equipment": "node scripts/importGombeEquipment.js",
+    "import:anambra:preview": "node scripts/previewAnambraImport.js",
+    "import:anambra:reconcile": "node scripts/reconcileAnambraImport.js",
+    "import:anambra": "node scripts/importAnambraData.js",
+    "import:anambra:verify": "node scripts/verifyAnambraImport.js",
     "migration:prepare-mysql": "node scripts/prepareMysqlSourceClient.js",
     "migration:mysql-to-postgres": "node scripts/migrateMysqlToPostgres.js",
     "migration:trial": "node scripts/runLocalMigrationTrial.js",
@@ -41,6 +45,7 @@
     "resend": "^6.18.1"
   },
   "devDependencies": {
+    "exceljs": "^4.4.0",
     "nodemon": "^3.1.10",
     "prisma": "^6.12.0"
   }
