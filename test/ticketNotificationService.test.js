@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  recipientRoleKeysForLevel,
   ticketNotificationContent,
   uniqueRecipientIds,
 } from '../src/services/ticketNotificationService.js';
@@ -27,6 +28,13 @@ test('ticket notification recipients are deduplicated and exclude the actor', ()
   );
 });
 
+test('ticket notifications can include the reporting actor', () => {
+  assert.deepEqual(
+    uniqueRecipientIds([{ id: 'reporter' }, { id: 'lga-admin' }]),
+    ['reporter', 'lga-admin'],
+  );
+});
+
 test('ticket creation notification identifies the ticket and facility', () => {
   const content = ticketNotificationContent('CREATED', ticket, {
     actorName: 'Grace Eze',
@@ -35,6 +43,13 @@ test('ticket creation notification identifies the ticket and facility', () => {
   assert.match(content.title, /FEPPM-2026-000123/);
   assert.match(content.message, /Grace Eze/);
   assert.match(content.message, /Balanga Health Clinic/);
+});
+
+test('state ticket notifications target maintenance and workshop managers', () => {
+  assert.deepEqual(recipientRoleKeysForLevel('STATE'), [
+    'STATE_MAINTENANCE_MANAGER',
+    'WORKSHOP_MANAGER',
+  ]);
 });
 
 test('internal ticket comments use a distinct notification type and wording', () => {

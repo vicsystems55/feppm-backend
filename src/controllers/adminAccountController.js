@@ -1,6 +1,12 @@
 import bcrypt from 'bcryptjs';
 
 import { prisma } from '../lib/prisma.js';
+import {
+  accountManagementContext,
+  accountWhereForContext,
+  assertAccountAllowed,
+  assertAssignmentAllowed,
+} from '../services/accountManagementPolicyService.js';
 
 const accountSelect = {
   id: true,
@@ -43,6 +49,8 @@ function requiredScopeType(roleKey) {
     FACILITY_MANAGER: 'LGA',
     NATIONAL_MAINTENANCE_MANAGER: 'NATIONAL',
     STATE_MAINTENANCE_MANAGER: 'STATE',
+    WORKSHOP_MANAGER: 'STATE',
+    STOREKEEPER: 'STATE',
     MAINTENANCE_SCHEDULER: 'STATE',
     TECHNICIAN: 'STATE',
     VENDOR_ADMIN: 'STATE',
@@ -105,13 +113,22 @@ async function validateAssignment({ organizationId, roleId, scopeUnitId, facilit
 }
 
 export async function listAccounts(request, response) {
+  const context = accountManagementContext(request.authUser);
+  if (!context) return response.status(403).json({ success: false, message: 'You do not have permission to manage login accounts.' });
   const page = integer(request.query.page, 1, 1, 100000);
   const pageSize = integer(request.query.pageSize, 20, 5, 100);
   const search = String(request.query.search ?? '').trim().slice(0, 100);
   const status = ['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(request.query.status) ? request.query.status : undefined;
   const roleKey = String(request.query.roleKey ?? '').trim() || undefined;
   const organizationId = String(request.query.organizationId ?? '').trim() || undefined;
+  if (!context.unrestricted && roleKey && !context.managedRoleKeys.includes(roleKey)) {
+    return response.status(400).json({ success: false, message: 'That role is outside your account-management scope.' });
+  }
+  if (!context.unrestricted && organizationId && organizationId !== context.organizationId) {
+    return response.status(400).json({ success: false, message: 'That organization is outside your account-management scope.' });
+  }
   const where = {
+    AND: [accountWhereForContext(context)],
     ...(search ? { OR: [
       { firstName: { contains: search } },
       { lastName: { contains: search } },
@@ -140,9 +157,20 @@ export async function listAccounts(request, response) {
   });
 }
 
-export async function getAccessOptions(_request, response) {
+export async function getAccessOptions(request, response) {
+  const context = accountManagementContext(request.authUser);
+  if (!context) return response.status(403).json({ success: false, message: 'You do not have permission to manage login accounts.' });
+  const scopedRoleWhere = context.unrestricted ? {} : { key: { in: context.managedRoleKeys } };
+  const scopedOrganizationWhere = context.unrestricted ? { status: 'ACTIVE' } : { id: context.organizationId, status: 'ACTIVE' };
+  const scopedUnitWhere = context.unrestricted
+    ? { status: 'ACTIVE' }
+    : { id: context.stateScopeId, status: 'ACTIVE' };
+  const scopedFacilityWhere = context.unrestricted
+    ? { status: 'ACTIVE' }
+    : { id: '__none__' };
   const [roles, permissions, organizations] = await Promise.all([
     prisma.role.findMany({
+      where: scopedRoleWhere,
       select: {
         id: true, key: true, name: true, description: true,
         permissions: { select: { permission: { select: { key: true } } } },
@@ -150,19 +178,19 @@ export async function getAccessOptions(_request, response) {
       },
       orderBy: { name: 'asc' },
     }),
-    prisma.permission.findMany({ orderBy: { key: 'asc' } }),
+    context.unrestricted ? prisma.permission.findMany({ orderBy: { key: 'asc' } }) : Promise.resolve([]),
     prisma.organization.findMany({
-      where: { status: 'ACTIVE' },
+      where: scopedOrganizationWhere,
       select: {
         id: true,
         name: true,
         administrativeUnits: {
-          where: { status: 'ACTIVE' },
+          where: scopedUnitWhere,
           select: { id: true, name: true, type: true, parentId: true },
           orderBy: [{ type: 'asc' }, { name: 'asc' }],
         },
         facilities: {
-          where: { status: 'ACTIVE' },
+          where: scopedFacilityWhere,
           select: { id: true, name: true, administrativeUnitId: true },
           orderBy: { name: 'asc' },
         },
@@ -176,6 +204,7 @@ export async function getAccessOptions(_request, response) {
       roles: roles.map((role) => ({
         ...role,
         permissions: role.permissions.map(({ permission }) => permission.key),
+        ...(!context.unrestricted ? { _count: { users: 0 } } : {}),
       })),
       permissions,
       organizations,
@@ -184,6 +213,8 @@ export async function getAccessOptions(_request, response) {
 }
 
 export async function createAccount(request, response) {
+  const context = accountManagementContext(request.authUser);
+  if (!context) return response.status(403).json({ success: false, message: 'You do not have permission to manage login accounts.' });
   const email = normalizeEmail(request.body?.email);
   const firstName = String(request.body?.firstName ?? '').trim();
   const lastName = String(request.body?.lastName ?? '').trim();
@@ -203,6 +234,11 @@ export async function createAccount(request, response) {
       roleId,
       scopeUnitId: request.body?.scopeUnitId,
       facilityId: request.body?.facilityId,
+    });
+    assertAssignmentAllowed(context, {
+      organizationId,
+      roleKey: assignment.role.key,
+      scopeUnitId: assignment.scope?.id,
     });
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.$transaction(async (tx) => {
@@ -238,16 +274,29 @@ export async function createAccount(request, response) {
     });
     return response.status(201).json({ success: true, message: 'Account created.', data: { account: serializeAccount(user) } });
   } catch (error) {
-    return response.status(400).json({ success: false, message: error.message });
+    return response.status(error.status ?? 400).json({ success: false, message: error.message });
   }
 }
 
 export async function updateAccount(request, response) {
+  const context = accountManagementContext(request.authUser);
+  if (!context) return response.status(403).json({ success: false, message: 'You do not have permission to manage login accounts.' });
   const account = await prisma.user.findUnique({
     where: { id: request.params.id },
-    select: { id: true, facilityId: true, roles: { select: { role: { select: { key: true } } } } },
+    select: {
+      id: true,
+      organizationId: true,
+      facilityId: true,
+      roles: { select: { role: { select: { key: true } } } },
+      scopes: { select: { administrativeUnit: { select: { id: true } } } },
+    },
   });
   if (!account) return response.status(404).json({ success: false, message: 'Account not found.' });
+  try {
+    assertAccountAllowed(context, account);
+  } catch (error) {
+    return response.status(error.status ?? 403).json({ success: false, message: error.message });
+  }
 
   const organizationId = String(request.body?.organizationId ?? '');
   const roleId = String(request.body?.roleId ?? '');
@@ -267,6 +316,11 @@ export async function updateAccount(request, response) {
       roleId,
       scopeUnitId: request.body?.scopeUnitId,
       facilityId: request.body?.facilityId,
+    });
+    assertAssignmentAllowed(context, {
+      organizationId,
+      roleKey: assignment.role.key,
+      scopeUnitId: assignment.scope?.id,
     });
     if (account.id === request.auth.id && assignment.role.key !== 'SUPER_ADMIN') {
       return response.status(400).json({ success: false, message: 'You cannot remove your own Super Admin role.' });
@@ -329,7 +383,7 @@ export async function updateAccount(request, response) {
     const updated = await prisma.user.findUnique({ where: { id: account.id }, select: accountSelect });
     return response.json({ success: true, message: 'Account access updated.', data: { account: serializeAccount(updated) } });
   } catch (error) {
-    return response.status(400).json({ success: false, message: error.message });
+    return response.status(error.status ?? 400).json({ success: false, message: error.message });
   }
 }
 

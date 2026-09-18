@@ -36,6 +36,84 @@ enum AdministrativeUnitType {
   OTHER
 }
 
+enum WorkshopStaffPosition {
+  WORKSHOP_MANAGER
+  STOREKEEPER
+  TECHNICIAN
+}
+
+enum WorkshopStoreType {
+  GENERAL
+  TOOLS
+  SPARE_PARTS
+  CONSUMABLES
+}
+
+enum InventoryMovementType {
+  OPENING_BALANCE
+  RECEIPT
+  ISSUE
+  RETURN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+  WRITE_OFF
+}
+
+enum ToolCondition {
+  NEW
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+  UNSERVICEABLE
+}
+
+enum ToolAssetStatus {
+  AVAILABLE
+  RESERVED
+  ISSUED
+  IN_USE
+  UNDER_REPAIR
+  LOST
+  RETIRED
+}
+
+enum ToolCustodyAction {
+  RECEIVED
+  ISSUED
+  RETURNED
+  TRANSFERRED
+  AUDITED
+  SENT_FOR_REPAIR
+  RETIRED
+  REPORTED_LOST
+}
+
+enum ResourceRequestStatus {
+  SUBMITTED
+  WORKSHOP_APPROVED
+  AWAITING_STOCK
+  APPROVED_FOR_ISSUE
+  PARTIALLY_ISSUED
+  ISSUED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ResourceRequestItemType {
+  TOOL
+  SPARE_PART
+}
+
+enum ResourceRequestUrgency {
+  ROUTINE
+  URGENT
+  CRITICAL
+}
+
 enum FacilityType {
   PRIMARY_HEALTH_CENTRE
   GENERAL_HOSPITAL
@@ -291,6 +369,7 @@ enum MaintenanceWorkOrderStatus {
   PENDING_APPROVAL
   APPROVED
   ASSIGNED
+  ACCEPTED
   IN_PROGRESS
   AWAITING_PARTS
   AWAITING_VERIFICATION
@@ -357,6 +436,9 @@ model Organization {
   technicianProfiles    TechnicianProfile[]
   vendorContracts       VendorContract[]
   maintenanceWorkOrders MaintenanceWorkOrder[]
+  maintenanceWorkshops  MaintenanceWorkshop[]
+  spareParts            SparePart[]
+  resourceRequests      ResourceRequest[]
   simulationSessions    SimulationSession[]
   pilots                PilotProject[]
   createdAt             DateTime               @default(now())
@@ -385,6 +467,7 @@ model AdministrativeUnit {
   tickets               MaintenanceTicket[]
   technicianProfiles    TechnicianProfile[]
   maintenanceWorkOrders MaintenanceWorkOrder[]
+  maintenanceWorkshops  MaintenanceWorkshop[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
@@ -477,52 +560,61 @@ model FacilityDepartment {
 }
 
 model User {
-  id                  String                         @id @default(cuid())
-  organizationId      String
-  facilityId          String?
-  firstName           String
-  lastName            String
-  email               String                         @unique
-  phone               String?
-  passwordHash        String
-  status              RecordStatus                   @default(ACTIVE)
-  lastLoginAt         DateTime?
-  organization        Organization                   @relation(fields: [organizationId], references: [id])
-  facility            Facility?                      @relation(fields: [facilityId], references: [id])
-  roles               UserRole[]
-  scopes              UserScope[]
-  managedFacilities   Facility[]                     @relation("FacilityManager")
-  managedDepartments  FacilityDepartment[]           @relation("DepartmentManager")
-  assignedSchedules   MaintenanceSchedule[]          @relation("AssignedScheduleUser")
-  assignedTasks       MaintenanceTask[]              @relation("AssignedTaskUser")
-  completedTasks      MaintenanceTask[]              @relation("CompletedTaskUser")
-  evidence            EvidenceFile[]
-  reportedTickets     MaintenanceTicket[]            @relation("TicketReporter")
-  assignedTickets     MaintenanceTicket[]            @relation("AssignedTicketUser")
-  ticketActivities    TicketActivity[]
-  ticketComments      TicketComment[]
-  ticketAttachments   TicketAttachment[]
-  ticketAssignments   TicketAssignment[]             @relation("TicketAssignee")
-  assignedTicketWork  TicketAssignment[]             @relation("TicketAssignedBy")
-  ticketEscalations   TicketEscalation[]             @relation("TicketEscalatedBy")
-  technicianProfile   TechnicianProfile?
-  maintenanceTriages  MaintenanceTriage[]            @relation("MaintenanceTriagedBy")
-  createdWorkOrders   MaintenanceWorkOrder[]         @relation("WorkOrderCreatedBy")
-  approvedWorkOrders  MaintenanceWorkOrder[]         @relation("WorkOrderApprovedBy")
-  workOrderActivities MaintenanceWorkOrderActivity[]
-  workOrderReports    WorkOrderFieldReport[]
-  workOrderEvidence   WorkOrderEvidence[]
-  alertRecipients     AlertRecipient[]
-  registeredDevices   RegisteredDevice[]
-  rewardAccount       RewardAccount?
-  badges              UserBadge[]
-  trainingEnrollments CourseEnrollment[]
-  feedback            FeedbackSubmission[]
-  auditLogs           AuditLog[]
-  simulationSessions  SimulationSession[]
-  createdAt           DateTime                       @default(now())
-  updatedAt           DateTime                       @updatedAt
-  vendorContracts     VendorContract[]
+  id                        String                         @id @default(cuid())
+  organizationId            String
+  facilityId                String?
+  firstName                 String
+  lastName                  String
+  email                     String                         @unique
+  phone                     String?
+  passwordHash              String
+  status                    RecordStatus                   @default(ACTIVE)
+  lastLoginAt               DateTime?
+  organization              Organization                   @relation(fields: [organizationId], references: [id])
+  facility                  Facility?                      @relation(fields: [facilityId], references: [id])
+  roles                     UserRole[]
+  scopes                    UserScope[]
+  managedFacilities         Facility[]                     @relation("FacilityManager")
+  managedDepartments        FacilityDepartment[]           @relation("DepartmentManager")
+  assignedSchedules         MaintenanceSchedule[]          @relation("AssignedScheduleUser")
+  assignedTasks             MaintenanceTask[]              @relation("AssignedTaskUser")
+  completedTasks            MaintenanceTask[]              @relation("CompletedTaskUser")
+  evidence                  EvidenceFile[]
+  reportedTickets           MaintenanceTicket[]            @relation("TicketReporter")
+  assignedTickets           MaintenanceTicket[]            @relation("AssignedTicketUser")
+  ticketActivities          TicketActivity[]
+  ticketComments            TicketComment[]
+  ticketAttachments         TicketAttachment[]
+  ticketAssignments         TicketAssignment[]             @relation("TicketAssignee")
+  assignedTicketWork        TicketAssignment[]             @relation("TicketAssignedBy")
+  ticketEscalations         TicketEscalation[]             @relation("TicketEscalatedBy")
+  technicianProfile         TechnicianProfile?
+  maintenanceTriages        MaintenanceTriage[]            @relation("MaintenanceTriagedBy")
+  createdWorkOrders         MaintenanceWorkOrder[]         @relation("WorkOrderCreatedBy")
+  approvedWorkOrders        MaintenanceWorkOrder[]         @relation("WorkOrderApprovedBy")
+  workOrderActivities       MaintenanceWorkOrderActivity[]
+  workOrderReports          WorkOrderFieldReport[]
+  workOrderEvidence         WorkOrderEvidence[]
+  workshopAssignments       WorkshopStaffAssignment[]
+  inventoryMovements        InventoryMovement[]
+  toolCustodyEvents         ToolCustodyEvent[]
+  custodyEventsAsCustodian  ToolCustodyEvent[]             @relation("ToolEventCustodian")
+  custodialTools            ToolAsset[]                    @relation("CurrentToolCustodian")
+  requestedResources        ResourceRequest[]              @relation("ResourceRequestedBy")
+  workshopReviewedResources ResourceRequest[]              @relation("ResourceWorkshopReviewedBy")
+  storeReviewedResources    ResourceRequest[]              @relation("ResourceStoreReviewedBy")
+  resourceRequestActivities ResourceRequestActivity[]
+  alertRecipients           AlertRecipient[]
+  registeredDevices         RegisteredDevice[]
+  rewardAccount             RewardAccount?
+  badges                    UserBadge[]
+  trainingEnrollments       CourseEnrollment[]
+  feedback                  FeedbackSubmission[]
+  auditLogs                 AuditLog[]
+  simulationSessions        SimulationSession[]
+  createdAt                 DateTime                       @default(now())
+  updatedAt                 DateTime                       @updatedAt
+  vendorContracts           VendorContract[]
 
   @@index([organizationId, status])
   @@index([facilityId])
@@ -578,6 +670,240 @@ model UserScope {
   createdAt            DateTime           @default(now())
 
   @@unique([userId, administrativeUnitId])
+}
+
+model MaintenanceWorkshop {
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  administrativeUnitId String
+  code                 String
+  name                 String
+  address              String?
+  contactPhone         String?
+  contactEmail         String?
+  latitude             Decimal?                  @db.Decimal(10, 7)
+  longitude            Decimal?                  @db.Decimal(10, 7)
+  status               RecordStatus              @default(ACTIVE)
+  organization         Organization              @relation(fields: [organizationId], references: [id])
+  administrativeUnit   AdministrativeUnit        @relation(fields: [administrativeUnitId], references: [id])
+  staffAssignments     WorkshopStaffAssignment[]
+  stores               WorkshopStore[]
+  kitAssignments       WorkshopKitAssignment[]
+  resourceRequests     ResourceRequest[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([administrativeUnitId, status])
+}
+
+model WorkshopStaffAssignment {
+  id         String                @id @default(cuid())
+  workshopId String
+  userId     String
+  position   WorkshopStaffPosition
+  isPrimary  Boolean               @default(true)
+  startsAt   DateTime              @default(now())
+  endsAt     DateTime?
+  status     RecordStatus          @default(ACTIVE)
+  workshop   MaintenanceWorkshop   @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  @@unique([workshopId, userId, position])
+  @@index([userId, status])
+  @@index([workshopId, position, status])
+}
+
+model WorkshopStore {
+  id                 String              @id @default(cuid())
+  workshopId         String
+  code               String
+  name               String
+  type               WorkshopStoreType   @default(GENERAL)
+  status             RecordStatus        @default(ACTIVE)
+  workshop           MaintenanceWorkshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  stockBalances      StockBalance[]
+  inventoryMovements InventoryMovement[]
+  toolAssets         ToolAsset[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([workshopId, code])
+  @@index([workshopId, status])
+}
+
+model SparePart {
+  id                       String                @id @default(cuid())
+  organizationId           String
+  code                     String
+  name                     String
+  description              String?               @db.Text
+  category                 String?
+  unitOfMeasure            String                @default("each")
+  manufacturerPartNumber   String?
+  refrigerantCompatibility String?
+  status                   RecordStatus          @default(ACTIVE)
+  organization             Organization          @relation(fields: [organizationId], references: [id])
+  stockBalances            StockBalance[]
+  inventoryMovements       InventoryMovement[]
+  resourceRequestItems     ResourceRequestItem[]
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, category, status])
+}
+
+model StockBalance {
+  id               String        @id @default(cuid())
+  storeId          String
+  sparePartId      String
+  quantityOnHand   Decimal       @default(0) @db.Decimal(14, 3)
+  quantityReserved Decimal       @default(0) @db.Decimal(14, 3)
+  reorderLevel     Decimal       @default(0) @db.Decimal(14, 3)
+  lastCountedAt    DateTime?
+  store            WorkshopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sparePart        SparePart     @relation(fields: [sparePartId], references: [id])
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([storeId, sparePartId])
+  @@index([sparePartId])
+}
+
+model InventoryMovement {
+  id              String                @id @default(cuid())
+  storeId         String
+  sparePartId     String
+  recordedById    String
+  movementType    InventoryMovementType
+  quantity        Decimal               @db.Decimal(14, 3)
+  unitCost        Decimal?              @db.Decimal(14, 2)
+  referenceNumber String?
+  notes           String?               @db.Text
+  occurredAt      DateTime              @default(now())
+  store           WorkshopStore         @relation(fields: [storeId], references: [id])
+  sparePart       SparePart             @relation(fields: [sparePartId], references: [id])
+  recordedBy      User                  @relation(fields: [recordedById], references: [id])
+  createdAt       DateTime              @default(now())
+
+  @@index([storeId, occurredAt])
+  @@index([sparePartId, occurredAt])
+  @@index([recordedById, occurredAt])
+  @@index([referenceNumber])
+}
+
+model ToolCatalogItem {
+  id                         String                @id @default(cuid())
+  code                       String                @unique
+  name                       String                @unique
+  category                   String?
+  description                String?               @db.Text
+  specification              String?               @db.Text
+  unitOfMeasure              String                @default("each")
+  expectedUsefulLifeYears    Int?
+  defaultAuditIntervalMonths Int?
+  calibrationRequired        Boolean               @default(false)
+  qualityStandard            String?
+  status                     RecordStatus          @default(ACTIVE)
+  kitItems                   WorkshopKitItem[]
+  toolAssets                 ToolAsset[]
+  resourceRequestItems       ResourceRequestItem[]
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+}
+
+model WorkshopKitTemplate {
+  id                         String                  @id @default(cuid())
+  code                       String                  @unique
+  name                       String
+  description                String?                 @db.Text
+  sourceDocument             String?
+  refrigerantSystems         String[]
+  expectedUsefulLifeYears    Int?
+  defaultAuditIntervalMonths Int?
+  status                     RecordStatus            @default(ACTIVE)
+  items                      WorkshopKitItem[]
+  workshopAssignments        WorkshopKitAssignment[]
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+}
+
+model WorkshopKitItem {
+  id                String              @id @default(cuid())
+  kitTemplateId     String
+  toolCatalogItemId String
+  requiredQuantity  Int                 @default(1)
+  packContents      String?
+  notes             String?             @db.Text
+  kitTemplate       WorkshopKitTemplate @relation(fields: [kitTemplateId], references: [id], onDelete: Cascade)
+  toolCatalogItem   ToolCatalogItem     @relation(fields: [toolCatalogItemId], references: [id])
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([kitTemplateId, toolCatalogItemId])
+  @@index([toolCatalogItemId])
+}
+
+model WorkshopKitAssignment {
+  id            String              @id @default(cuid())
+  workshopId    String
+  kitTemplateId String
+  assignedAt    DateTime            @default(now())
+  status        RecordStatus        @default(ACTIVE)
+  workshop      MaintenanceWorkshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  kitTemplate   WorkshopKitTemplate @relation(fields: [kitTemplateId], references: [id])
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([workshopId, kitTemplateId])
+  @@index([kitTemplateId, status])
+}
+
+model ToolAsset {
+  id                 String             @id @default(cuid())
+  storeId            String
+  toolCatalogItemId  String
+  currentCustodianId String?
+  assetTag           String             @unique
+  serialNumber       String?
+  condition          ToolCondition      @default(NEW)
+  status             ToolAssetStatus    @default(AVAILABLE)
+  acquiredAt         DateTime?
+  lastAuditedAt      DateTime?
+  nextAuditDueAt     DateTime?
+  store              WorkshopStore      @relation(fields: [storeId], references: [id])
+  toolCatalogItem    ToolCatalogItem    @relation(fields: [toolCatalogItemId], references: [id])
+  currentCustodian   User?              @relation("CurrentToolCustodian", fields: [currentCustodianId], references: [id])
+  custodyEvents      ToolCustodyEvent[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([storeId, status])
+  @@index([toolCatalogItemId, condition])
+  @@index([currentCustodianId, status])
+}
+
+model ToolCustodyEvent {
+  id              String            @id @default(cuid())
+  toolAssetId     String
+  recordedById    String
+  action          ToolCustodyAction
+  custodianId     String?
+  condition       ToolCondition
+  referenceNumber String?
+  notes           String?           @db.Text
+  occurredAt      DateTime          @default(now())
+  toolAsset       ToolAsset         @relation(fields: [toolAssetId], references: [id], onDelete: Cascade)
+  recordedBy      User              @relation(fields: [recordedById], references: [id])
+  custodian       User?             @relation("ToolEventCustodian", fields: [custodianId], references: [id])
+  createdAt       DateTime          @default(now())
+
+  @@index([toolAssetId, occurredAt])
+  @@index([recordedById, occurredAt])
+  @@index([custodianId, occurredAt])
 }
 
 model EquipmentCategory {
@@ -1220,6 +1546,7 @@ model MaintenanceWorkOrder {
   verificationNote      String?                        @db.Text
   approvedAt            DateTime?
   assignedAt            DateTime?
+  acceptedAt            DateTime?
   startedAt             DateTime?
   completionSubmittedAt DateTime?
   completedAt           DateTime?
@@ -1238,6 +1565,7 @@ model MaintenanceWorkOrder {
   fieldReport           WorkOrderFieldReport?
   partsUsed             WorkOrderPartUsage[]
   evidence              WorkOrderEvidence[]
+  resourceRequests      ResourceRequest[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
@@ -1423,6 +1751,86 @@ model WorkOrderSequence {
   year         Int      @id
   currentValue Int      @default(0)
   updatedAt    DateTime @updatedAt
+}
+
+model ResourceRequestSequence {
+  year         Int      @id
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
+model ResourceRequest {
+  id                   String                    @id @default(cuid())
+  requestNumber        String                    @unique
+  organizationId       String
+  workshopId           String
+  workOrderId          String
+  requestedById        String
+  workshopReviewedById String?
+  storeReviewedById    String?
+  urgency              ResourceRequestUrgency    @default(ROUTINE)
+  status               ResourceRequestStatus     @default(SUBMITTED)
+  purpose              String                    @db.Text
+  workshopReviewNote   String?                   @db.Text
+  storeReviewNote      String?                   @db.Text
+  requestedAt          DateTime                  @default(now())
+  workshopReviewedAt   DateTime?
+  storeReviewedAt      DateTime?
+  organization         Organization              @relation(fields: [organizationId], references: [id])
+  workshop             MaintenanceWorkshop       @relation(fields: [workshopId], references: [id])
+  workOrder            MaintenanceWorkOrder      @relation(fields: [workOrderId], references: [id])
+  requestedBy          User                      @relation("ResourceRequestedBy", fields: [requestedById], references: [id])
+  workshopReviewedBy   User?                     @relation("ResourceWorkshopReviewedBy", fields: [workshopReviewedById], references: [id])
+  storeReviewedBy      User?                     @relation("ResourceStoreReviewedBy", fields: [storeReviewedById], references: [id])
+  items                ResourceRequestItem[]
+  activities           ResourceRequestActivity[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([organizationId, status, requestedAt])
+  @@index([workshopId, status, requestedAt])
+  @@index([workOrderId])
+  @@index([requestedById, status])
+}
+
+model ResourceRequestItem {
+  id                String                  @id @default(cuid())
+  resourceRequestId String
+  itemType          ResourceRequestItemType
+  toolCatalogItemId String?
+  sparePartId       String?
+  requestedQuantity Decimal                 @db.Decimal(14, 3)
+  approvedQuantity  Decimal?                @db.Decimal(14, 3)
+  issuedQuantity    Decimal                 @default(0) @db.Decimal(14, 3)
+  returnedQuantity  Decimal                 @default(0) @db.Decimal(14, 3)
+  consumedQuantity  Decimal                 @default(0) @db.Decimal(14, 3)
+  notes             String?                 @db.Text
+  resourceRequest   ResourceRequest         @relation(fields: [resourceRequestId], references: [id], onDelete: Cascade)
+  toolCatalogItem   ToolCatalogItem?        @relation(fields: [toolCatalogItemId], references: [id])
+  sparePart         SparePart?              @relation(fields: [sparePartId], references: [id])
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([resourceRequestId, itemType])
+  @@index([toolCatalogItemId])
+  @@index([sparePartId])
+}
+
+model ResourceRequestActivity {
+  id                String                 @id @default(cuid())
+  resourceRequestId String
+  actorId           String
+  action            String
+  fromStatus        ResourceRequestStatus?
+  toStatus          ResourceRequestStatus?
+  note              String?                @db.Text
+  metadata          Json?
+  resourceRequest   ResourceRequest        @relation(fields: [resourceRequestId], references: [id], onDelete: Cascade)
+  actor             User                   @relation(fields: [actorId], references: [id])
+  createdAt         DateTime               @default(now())
+
+  @@index([resourceRequestId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model OutboxEvent {

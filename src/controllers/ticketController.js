@@ -1,6 +1,12 @@
 import { prisma } from '../lib/prisma.js';
 import { resolveFacilityAccess } from '../services/facilityAccessService.js';
-import { notifyTicketCreated, notifyTicketEscalated } from '../services/ticketEmailService.js';
+import {
+  notifyTicketAssigned,
+  notifyTicketCommentAdded,
+  notifyTicketCreated,
+  notifyTicketEscalated,
+  notifyTicketStatusChanged,
+} from '../services/ticketEmailService.js';
 import { normalizeTicketAttachments } from '../services/ticketAttachmentService.js';
 import {
   notifyTicketAssignedInApp,
@@ -653,6 +659,10 @@ export async function updateTicketStatus(request, response) {
     oldStatus: ticket.status,
     newStatus: status,
   });
+  void notifyTicketStatusChanged(ticket.id, request.authUser.id, {
+    oldStatus: ticket.status,
+    newStatus: status,
+  });
 
   const updated = await accessibleTicket(ticket.id, request.authUser);
   return response.json({
@@ -721,6 +731,9 @@ export async function assignTicket(request, response) {
     }),
   ]);
   await notifyTicketAssignedInApp(ticket.id, request.authUser.id, {
+    assigneeName: `${assignee.firstName} ${assignee.lastName}`.trim(),
+  });
+  void notifyTicketAssigned(ticket.id, request.authUser.id, {
     assigneeName: `${assignee.firstName} ${assignee.lastName}`.trim(),
   });
 
@@ -832,6 +845,9 @@ export async function addTicketComment(request, response) {
   await notifyTicketCommentAddedInApp(ticket.id, request.authUser.id, {
     isInternal,
     escalationLevel: ticket.escalationLevel,
+  });
+  void notifyTicketCommentAdded(ticket.id, request.authUser.id, {
+    isInternal,
   });
 
   return response.status(201).json({

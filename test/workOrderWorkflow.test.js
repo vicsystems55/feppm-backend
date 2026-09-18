@@ -8,7 +8,8 @@ test('work orders follow the controlled approval and field lifecycle', () => {
   assert.equal(resolveWorkOrderTransition('approve', 'PENDING_APPROVAL'), 'APPROVED');
   assert.equal(resolveWorkOrderTransition('approve', 'PENDING_APPROVAL', { hasAssignment: true }), 'ASSIGNED');
   assert.equal(resolveWorkOrderTransition('assign', 'APPROVED'), 'ASSIGNED');
-  assert.equal(resolveWorkOrderTransition('start', 'ASSIGNED'), 'IN_PROGRESS');
+  assert.equal(resolveWorkOrderTransition('accept', 'ASSIGNED'), 'ACCEPTED');
+  assert.equal(resolveWorkOrderTransition('start', 'ACCEPTED'), 'IN_PROGRESS');
   assert.equal(resolveWorkOrderTransition('request_parts', 'IN_PROGRESS'), 'AWAITING_PARTS');
   assert.equal(resolveWorkOrderTransition('resume', 'AWAITING_PARTS'), 'IN_PROGRESS');
   assert.equal(resolveWorkOrderTransition('submit_completion', 'IN_PROGRESS'), 'AWAITING_VERIFICATION');

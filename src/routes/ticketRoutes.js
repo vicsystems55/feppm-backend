@@ -10,13 +10,13 @@ import {
   listTickets,
   updateTicketStatus,
 } from '../controllers/ticketController.js';
-import { authenticate, requirePermission } from '../middleware/auth.js';
+import { authenticate, requireAnyPermission, requirePermission } from '../middleware/auth.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.get('/', requirePermission('tickets.view'), listTickets);
-router.get('/options', requirePermission('tickets.create'), getTicketOptions);
+router.get('/options', requireAnyPermission('tickets.create', 'tickets.assign'), getTicketOptions);
 router.post('/', requirePermission('tickets.create'), createTicket);
 router.get('/:id', requirePermission('tickets.view'), getTicket);
 router.patch('/:id/status', requirePermission('tickets.update'), updateTicketStatus);

@@ -11,6 +11,8 @@ test('technician maintenance roles have web application access', () => {
   for (const role of [
     'NATIONAL_MAINTENANCE_MANAGER',
     'STATE_MAINTENANCE_MANAGER',
+    'WORKSHOP_MANAGER',
+    'STOREKEEPER',
     'MAINTENANCE_SCHEDULER',
     'TECHNICIAN',
     'VENDOR_ADMIN',

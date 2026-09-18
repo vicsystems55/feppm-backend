@@ -74,7 +74,7 @@ async function activity(transaction, workOrder, actorId, action, toStatus = null
 async function releaseTechnicianIfIdle(technicianProfileId) {
   if (!technicianProfileId) return;
   const active = await prisma.maintenanceWorkOrder.count({
-    where: { assignedTechnicianId: technicianProfileId, status: { in: ['ASSIGNED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION'] } },
+    where: { assignedTechnicianId: technicianProfileId, status: { in: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION'] } },
   });
   if (!active) await prisma.technicianProfile.update({ where: { id: technicianProfileId }, data: { availabilityStatus: 'AVAILABLE' } });
 }
@@ -133,6 +133,22 @@ export async function assignWorkOrder(request, response) {
   });
   if (previousTechnicianId && previousTechnicianId !== assignedTechnicianId) await releaseTechnicianIfIdle(previousTechnicianId);
   response.json({ success: true, message: `${workOrder.workOrderNumber} assignment updated.`, data: { workOrder: updated } });
+}
+
+export async function acceptWorkOrder(request, response) {
+  const workOrder = await requireWorkOrder(request.params.workOrderId, request.authUser);
+  await requireAssignedExecutor(workOrder, request.authUser);
+  const nextStatus = resolveWorkOrderTransition('accept', workOrder.status);
+  const now = new Date();
+  const updated = await prisma.$transaction(async (transaction) => {
+    await activity(transaction, workOrder, request.authUser.id, 'ASSIGNMENT_ACCEPTED', nextStatus, request.body?.note);
+    return transaction.maintenanceWorkOrder.update({
+      where: { id: workOrder.id },
+      data: { status: nextStatus, acceptedAt: now },
+      include: maintenanceExecutionInclude,
+    });
+  });
+  response.json({ success: true, message: `${workOrder.workOrderNumber} accepted.`, data: { workOrder: updated } });
 }
 
 export async function startWorkOrder(request, response) {

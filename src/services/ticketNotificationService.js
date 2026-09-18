@@ -1,12 +1,16 @@
 import { prisma } from '../lib/prisma.js';
 
-const roleForLevel = {
-  LGA: 'LGA_ADMIN',
-  STATE: 'STATE_ADMIN',
-  ZONE: 'ZONAL_ADMIN',
-  NATIONAL: 'NATIONAL_ADMIN',
-  PLATFORM: 'SUPER_ADMIN',
+const rolesForLevel = {
+  LGA: ['LGA_ADMIN'],
+  STATE: ['STATE_MAINTENANCE_MANAGER', 'WORKSHOP_MANAGER'],
+  ZONE: ['ZONAL_ADMIN'],
+  NATIONAL: ['NATIONAL_ADMIN'],
+  PLATFORM: ['SUPER_ADMIN'],
 };
+
+export function recipientRoleKeysForLevel(level) {
+  return [...(rolesForLevel[level] ?? [])];
+}
 
 const ticketNotificationInclude = {
   organization: { select: { id: true, name: true } },
@@ -99,8 +103,8 @@ async function administrativeAncestors(administrativeUnitId) {
 }
 
 async function administratorsForLevel(ticket, level, ancestors) {
-  const roleKey = roleForLevel[level];
-  if (!roleKey) return [];
+  const roleKeys = rolesForLevel[level] ?? [];
+  if (!roleKeys.length) return [];
   const unit = ancestors.find(({ type }) => type === level);
   if (['LGA', 'STATE', 'ZONE'].includes(level) && !unit) return [];
 
@@ -108,7 +112,7 @@ async function administratorsForLevel(ticket, level, ancestors) {
     where: {
       status: 'ACTIVE',
       ...(level === 'PLATFORM' ? {} : { organizationId: ticket.organizationId }),
-      roles: { some: { role: { key: roleKey } } },
+      roles: { some: { role: { key: { in: roleKeys } } } },
       ...(['LGA', 'STATE', 'ZONE'].includes(level)
         ? { scopes: { some: { administrativeUnitId: unit.id } } }
         : {}),
@@ -160,13 +164,14 @@ async function createTicketNotification({
       actorDisplayName(actorId),
     ]);
     const lgaAdmins = await administratorsForLevel(ticket, 'LGA', ancestors);
-    const targetAdmins = targetLevel && targetLevel !== 'LGA'
+    const stateManagers = await administratorsForLevel(ticket, 'STATE', ancestors);
+    const targetAdmins = targetLevel && !['LGA', 'STATE'].includes(targetLevel)
       ? await administratorsForLevel(ticket, targetLevel, ancestors)
       : [];
 
     let candidates;
     if (event === 'COMMENT_ADDED' && context.isInternal) {
-      candidates = [ticket.assignedTo, lgaAdmins, targetAdmins];
+      candidates = [ticket.assignedTo, lgaAdmins, stateManagers, targetAdmins];
     } else if (event === 'ESCALATED') {
       candidates = [
         ticket.reportedBy,
@@ -174,6 +179,7 @@ async function createTicketNotification({
         managers,
         ticket.facility?.managerUserId,
         lgaAdmins,
+        stateManagers,
         targetAdmins,
       ];
     } else {
@@ -183,10 +189,11 @@ async function createTicketNotification({
         managers,
         ticket.facility?.managerUserId,
         lgaAdmins,
+        stateManagers,
       ];
     }
 
-    const recipientIds = uniqueRecipientIds(candidates, actorId);
+    const recipientIds = uniqueRecipientIds(candidates);
     if (!recipientIds.length) return { created: false, recipientCount: 0 };
 
     const content = ticketNotificationContent(event, ticket, {

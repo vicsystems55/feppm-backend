@@ -7,15 +7,15 @@ import {
   updateAccount,
   updateRolePermissions,
 } from '../controllers/adminAccountController.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate, requireAnyPermission, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(authenticate, requireRole('SUPER_ADMIN'));
-router.get('/accounts', listAccounts);
-router.post('/accounts', createAccount);
-router.patch('/accounts/:id', updateAccount);
-router.get('/access-options', getAccessOptions);
-router.patch('/roles/:id/permissions', updateRolePermissions);
+router.use(authenticate);
+router.get('/accounts', requireAnyPermission('users.view', 'maintenance_staff.view'), listAccounts);
+router.post('/accounts', requireAnyPermission('users.create', 'maintenance_staff.manage'), createAccount);
+router.patch('/accounts/:id', requireAnyPermission('users.update', 'maintenance_staff.manage'), updateAccount);
+router.get('/access-options', requireAnyPermission('users.view', 'maintenance_staff.view'), getAccessOptions);
+router.patch('/roles/:id/permissions', requireRole('SUPER_ADMIN'), updateRolePermissions);
 
 export default router;

@@ -17,6 +17,7 @@ import {
 } from '../controllers/maintenanceOperationsController.js';
 import { authenticate, requireAnyPermission, requirePermission } from '../middleware/auth.js';
 import {
+  acceptWorkOrder,
   addWorkOrderEvidence,
   addWorkOrderPart,
   approveWorkOrder,
@@ -43,6 +44,7 @@ router.get('/work-orders/:workOrderId', requirePermission('work_orders.view'), g
 router.post('/work-orders/:workOrderId/submit', requirePermission('work_orders.create'), submitWorkOrderForApproval);
 router.post('/work-orders/:workOrderId/approve', requirePermission('work_orders.verify'), approveWorkOrder);
 router.post('/work-orders/:workOrderId/assign', requirePermission('work_orders.assign'), assignWorkOrder);
+router.post('/work-orders/:workOrderId/accept', requirePermission('work_orders.update'), acceptWorkOrder);
 router.post('/work-orders/:workOrderId/start', requirePermission('work_orders.update'), startWorkOrder);
 router.put('/work-orders/:workOrderId/field-report', requirePermission('work_orders.update'), updateWorkOrderFieldReport);
 router.post('/work-orders/:workOrderId/parts', requirePermission('work_orders.update'), addWorkOrderPart);

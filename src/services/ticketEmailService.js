@@ -5,12 +5,12 @@ import { prisma } from '../lib/prisma.js';
 
 const resend = env.emailEnabled ? new Resend(env.resendApiKey) : null;
 
-const roleForLevel = {
-  LGA: 'LGA_ADMIN',
-  STATE: 'STATE_ADMIN',
-  ZONE: 'ZONAL_ADMIN',
-  NATIONAL: 'NATIONAL_ADMIN',
-  PLATFORM: 'SUPER_ADMIN',
+const rolesForLevel = {
+  LGA: ['LGA_ADMIN'],
+  STATE: ['STATE_MAINTENANCE_MANAGER', 'WORKSHOP_MANAGER'],
+  ZONE: ['ZONAL_ADMIN'],
+  NATIONAL: ['NATIONAL_ADMIN'],
+  PLATFORM: ['SUPER_ADMIN'],
 };
 
 const ticketEmailInclude = {
@@ -100,15 +100,15 @@ async function administrativeAncestors(administrativeUnitId) {
 }
 
 async function administratorsForLevel(ticket, level, ancestors) {
-  const roleKey = roleForLevel[level];
-  if (!roleKey) return [];
+  const roleKeys = rolesForLevel[level] ?? [];
+  if (!roleKeys.length) return [];
   const unit = ancestors.find(({ type }) => type === level);
 
   return prisma.user.findMany({
     where: {
       status: 'ACTIVE',
       ...(level === 'PLATFORM' ? {} : { organizationId: ticket.organizationId }),
-      roles: { some: { role: { key: roleKey } } },
+      roles: { some: { role: { key: { in: roleKeys } } } },
       ...(['LGA', 'STATE', 'ZONE'].includes(level)
         ? { scopes: { some: { administrativeUnitId: unit?.id ?? '__none__' } } }
         : {}),
@@ -199,25 +199,37 @@ async function deliver(ticket, recipients, content, eventKey) {
     return { enabled: false, sent: 0, failed: 0, recipients: recipients.length };
   }
 
-  const attempts = await Promise.allSettled(recipients.map(async (recipient) => {
+  const sendRecipient = async (recipient) => {
     const documentData = { ...content, recipientName: recipient.name, ticket };
-    const result = await resend.emails.send({
-      from: env.emailFrom,
-      to: recipient.email,
-      ...(env.emailReplyTo ? { replyTo: env.emailReplyTo } : {}),
-      subject: content.subject,
-      html: emailDocument(documentData),
-      text: textDocument(documentData),
-      tags: [
-        { name: 'event', value: content.tag },
-        { name: 'ticket', value: ticket.ticketNumber },
-      ],
-    }, {
-      idempotencyKey: `${eventKey}-${recipient.id}`.slice(0, 256),
-    });
-    if (result.error) throw new Error(result.error.message);
-    return { recipientId: recipient.id, emailId: result.data.id };
-  }));
+    let lastError;
+    for (let attempt = 1; attempt <= env.emailNotificationMaxRetries; attempt += 1) {
+      try {
+        const result = await resend.emails.send({
+          from: env.emailFrom,
+          to: recipient.email,
+          ...(env.emailReplyTo ? { replyTo: env.emailReplyTo } : {}),
+          subject: content.subject,
+          html: emailDocument(documentData),
+          text: textDocument(documentData),
+          tags: [
+            { name: 'event', value: content.tag },
+            { name: 'ticket', value: ticket.ticketNumber },
+          ],
+        }, {
+          idempotencyKey: `${eventKey}-${recipient.id}`.slice(0, 256),
+        });
+        if (result.error) throw new Error(result.error.message);
+        return { recipientId: recipient.id, emailId: result.data.id };
+      } catch (error) {
+        lastError = error;
+        if (attempt < env.emailNotificationMaxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, env.emailNotificationRetryDelayMs * attempt));
+        }
+      }
+    }
+    throw lastError;
+  };
+  const attempts = await Promise.allSettled(recipients.map(sendRecipient));
   const results = attempts
     .filter(({ status }) => status === 'fulfilled')
     .map(({ value }) => value);
@@ -275,10 +287,12 @@ export async function notifyTicketCreated(ticketId, actorId) {
       ticket.facility?.administrativeUnitId ?? ticket.administrativeUnitId,
     );
     const lgaAdmins = await administratorsForLevel(ticket, 'LGA', ancestors);
+    const stateManagers = await administratorsForLevel(ticket, 'STATE', ancestors);
     const recipients = resolveEmailRecipients([
       ticket.facility?.manager,
       ticket.reportedBy,
       ...lgaAdmins,
+      ...stateManagers,
     ]);
     if (!recipients.length) return;
 
@@ -299,6 +313,71 @@ export async function notifyTicketCreated(ticketId, actorId) {
     console.error('Ticket creation email failed:', error);
     await recordFailure(ticketId, actorId, error);
   }
+}
+
+async function notifyTicketUpdate(ticketId, actorId, event, context = {}) {
+  try {
+    const ticket = await prisma.maintenanceTicket.findUnique({ where: { id: ticketId }, include: ticketEmailInclude });
+    if (!ticket) return;
+    const ancestors = await administrativeAncestors(ticket.facility?.administrativeUnitId ?? ticket.administrativeUnitId);
+    const [lgaAdmins, stateManagers] = await Promise.all([
+      administratorsForLevel(ticket, 'LGA', ancestors),
+      administratorsForLevel(ticket, 'STATE', ancestors),
+    ]);
+    const recipients = resolveEmailRecipients(context.isInternal
+      ? [ticket.assignedTo, ...lgaAdmins, ...stateManagers]
+      : [ticket.facility?.manager, ticket.reportedBy, ticket.assignedTo, ...lgaAdmins, ...stateManagers]);
+    if (!recipients.length) return;
+    const isStatus = event === 'STATUS_CHANGED';
+    const isAssignment = event === 'ASSIGNED';
+    const content = isStatus
+      ? {
+        tag: 'ticket_status_changed',
+        subject: `[${ticket.ticketNumber}] Ticket status updated`,
+        preheader: `FEPPM ticket ${ticket.ticketNumber} status changed.`,
+        heading: 'Ticket status updated',
+        intro: 'A ticket in your operational scope has changed status.',
+        eventMessage: `${context.actorName || 'A FEPPM user'} changed the status from ${context.oldStatus} to ${context.newStatus}.`,
+        actionLabel: 'Review ticket',
+      }
+      : isAssignment
+        ? {
+          tag: 'ticket_assigned',
+          subject: `[${ticket.ticketNumber}] Ticket assigned`,
+          preheader: `FEPPM ticket ${ticket.ticketNumber} was assigned.`,
+          heading: 'Ticket assigned',
+          intro: 'A ticket in your operational scope has been assigned for follow-up.',
+          eventMessage: `${context.actorName || 'A FEPPM user'} assigned this ticket to ${context.assigneeName || 'a support officer'}.`,
+          actionLabel: 'Review ticket',
+        }
+        : {
+        tag: 'ticket_comment_added',
+        subject: `[${ticket.ticketNumber}] New ticket update`,
+        preheader: `A new update was added to FEPPM ticket ${ticket.ticketNumber}.`,
+        heading: 'New ticket update',
+        intro: 'A new comment or operational update has been added to a ticket in your scope.',
+        eventMessage: `${context.actorName || 'A FEPPM user'} added an update to this ticket${context.isInternal ? ' (internal support note)' : ''}.`,
+        actionLabel: 'Open ticket',
+      };
+    const delivery = await deliver(ticket, recipients, content, `ticket-${event.toLowerCase()}-${ticket.id}-${context.eventId || Date.now()}`);
+    if (delivery.enabled && !delivery.sent && delivery.failed) throw new Error(delivery.errors.join('; '));
+    await recordDelivery(ticket.id, actorId, isStatus ? 'TICKET_STATUS_EMAIL_SENT' : isAssignment ? 'TICKET_ASSIGNMENT_EMAIL_SENT' : 'TICKET_UPDATE_EMAIL_SENT', delivery);
+  } catch (error) {
+    console.error(`Ticket ${event.toLowerCase()} email failed:`, error);
+    await recordFailure(ticketId, actorId, error);
+  }
+}
+
+export function notifyTicketStatusChanged(ticketId, actorId, context) {
+  return notifyTicketUpdate(ticketId, actorId, 'STATUS_CHANGED', context);
+}
+
+export function notifyTicketAssigned(ticketId, actorId, context) {
+  return notifyTicketUpdate(ticketId, actorId, 'ASSIGNED', context);
+}
+
+export function notifyTicketCommentAdded(ticketId, actorId, context) {
+  return notifyTicketUpdate(ticketId, actorId, 'COMMENT_ADDED', context);
 }
 
 export async function notifyTicketEscalated(ticketId, actorId, escalationId) {

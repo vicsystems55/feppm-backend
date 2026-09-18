@@ -11,6 +11,8 @@ import maintenanceOperationsRouter from './maintenanceOperationsRoutes.js';
 import notificationRouter from './notificationRoutes.js';
 import ticketRouter from './ticketRoutes.js';
 import uploadRouter from './uploadRoutes.js';
+import workshopResourceRouter from './workshopResourceRoutes.js';
+import resourceRequestRouter from './resourceRequestRoutes.js';
 
 const router = Router();
 
@@ -34,5 +36,7 @@ router.use('/maintenance-operations', maintenanceOperationsRouter);
 router.use('/notifications', notificationRouter);
 router.use('/tickets', ticketRouter);
 router.use('/uploads', uploadRouter);
+router.use('/workshop-resources', workshopResourceRouter);
+router.use('/resource-requests', resourceRequestRouter);
 
 export default router;

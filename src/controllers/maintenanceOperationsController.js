@@ -7,7 +7,7 @@ import {
 import { userHasRole } from '../services/userAccessService.js';
 
 const decisions = ['INFORMATION_REQUIRED', 'REMOTE_SUPPORT', 'FIELD_VISIT', 'VENDOR_REFERRAL', 'PARTS_REQUIRED', 'REPLACEMENT_RECOMMENDED', 'NO_ACTION'];
-const workOrderStatuses = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION', 'COMPLETED', 'CANCELLED'];
+const workOrderStatuses = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION', 'COMPLETED', 'CANCELLED'];
 const workerTypes = ['GOVERNMENT', 'VENDOR', 'PARTNER'];
 const availabilityStatuses = ['AVAILABLE', 'ASSIGNED', 'ON_LEAVE', 'INACTIVE'];
 const contractStatuses = ['DRAFT', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'TERMINATED'];
@@ -127,7 +127,7 @@ async function maintenanceFacilityMap(user, roleKey) {
 }
 
 export async function getMaintenanceDashboard(request, response) {
-  const roleKey = ['NATIONAL_MAINTENANCE_MANAGER', 'STATE_MAINTENANCE_MANAGER', 'MAINTENANCE_SCHEDULER', 'TECHNICIAN', 'VENDOR_ADMIN', 'VENDOR_TECHNICIAN']
+  const roleKey = ['NATIONAL_MAINTENANCE_MANAGER', 'STATE_MAINTENANCE_MANAGER', 'WORKSHOP_MANAGER', 'STOREKEEPER', 'MAINTENANCE_SCHEDULER', 'TECHNICIAN', 'VENDOR_ADMIN', 'VENDOR_TECHNICIAN']
     .find((key) => userHasRole(request.authUser, key)) ?? 'STATE_MAINTENANCE_MANAGER';
   const scopedTicketWhere = await maintenanceTicketWhere(request.authUser);
   const [requestGroups, workOrderGroups, availableTechnicians, expiringContracts, facilityMap] = await Promise.all([

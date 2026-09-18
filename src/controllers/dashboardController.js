@@ -3,7 +3,7 @@ import { ensureManagerTasks } from './checklistController.js';
 import { resolveFacilityAccess } from '../services/facilityAccessService.js';
 import { getMaintenanceDashboard } from './maintenanceOperationsController.js';
 
-const maintenanceRoles = ['NATIONAL_MAINTENANCE_MANAGER', 'STATE_MAINTENANCE_MANAGER', 'MAINTENANCE_SCHEDULER', 'TECHNICIAN', 'VENDOR_ADMIN', 'VENDOR_TECHNICIAN'];
+const maintenanceRoles = ['NATIONAL_MAINTENANCE_MANAGER', 'STATE_MAINTENANCE_MANAGER', 'WORKSHOP_MANAGER', 'STOREKEEPER', 'MAINTENANCE_SCHEDULER', 'TECHNICIAN', 'VENDOR_ADMIN', 'VENDOR_TECHNICIAN'];
 const rolePriority = ['SUPER_ADMIN', ...maintenanceRoles, 'NATIONAL_ADMIN', 'ZONAL_ADMIN', 'STATE_ADMIN', 'LGA_ADMIN', 'FACILITY_MANAGER'];
 const completedStatuses = ['COMPLETED_ON_TIME', 'COMPLETED_LATE'];
 const openTicketStatuses = ['OPEN', 'ACKNOWLEDGED', 'ASSIGNED', 'IN_PROGRESS', 'AWAITING_PARTS', 'REOPENED'];

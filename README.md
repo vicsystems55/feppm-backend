@@ -59,9 +59,9 @@ Ticket priority is calculated by the API from impact and urgency. Ticket visibil
 
 ## Resend ticket emails
 
-Ticket creation emails are sent to the facility manager, reporter, and active LGA administrators in the relevant hierarchy. Escalation emails are sent to the administrators at the next level, the facility manager, reporter, and current ticket owner. Duplicate addresses are removed.
+Ticket creation emails are sent to the facility manager, reporter, active LGA administrators, state maintenance managers, and workshop managers in the relevant hierarchy. Status, assignment, comment, and escalation updates notify the same operational recipients as applicable. Duplicate addresses are removed.
 
-Email is automatically disabled when `RESEND_API_KEY` or `RESEND_FROM_EMAIL` is absent. Ticket creation and escalation still succeed if Resend is unavailable; the failure is written to the ticket activity trail.
+Email is automatically disabled when `RESEND_API_KEY` or `RESEND_FROM_EMAIL` is absent. Ticket operations still succeed if Resend is unavailable; the failure is written to the ticket activity trail. Each recipient delivery is retried using `EMAIL_NOTIFICATION_MAX_RETRIES` and `EMAIL_NOTIFICATION_RETRY_DELAY_MS`, with Resend idempotency keys preventing duplicate sends when a retry succeeds after a timeout.
 
 During demonstrations, `.demo` login addresses can be redirected to `TEST_EMAIL_TO`. This fallback is enabled by default in development and requires `EMAIL_DEMO_FALLBACK_ENABLED=true` in production. Disable it after replacing demo addresses with real account emails.
 
@@ -75,6 +75,8 @@ RESEND_FROM_EMAIL=FEPPM Support <notifications@fempp.erp-55.com.ng>
 RESEND_REPLY_TO=support@your-monitored-domain.example
 TEST_EMAIL_TO=your-demo-inbox@example.com
 EMAIL_DEMO_FALLBACK_ENABLED=true
+EMAIL_NOTIFICATION_MAX_RETRIES=3
+EMAIL_NOTIFICATION_RETRY_DELAY_MS=1000
 ```
 
 After Resend verifies the sending domain, test delivery locally or on Render:

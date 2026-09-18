@@ -42,6 +42,8 @@ export const env = Object.freeze({
   emailDemoFallbackEnabled: String(
     process.env.EMAIL_DEMO_FALLBACK_ENABLED ?? (nodeEnv === 'production' ? 'false' : 'true'),
   ).toLowerCase() === 'true',
+  emailNotificationMaxRetries: Math.max(1, Number.parseInt(process.env.EMAIL_NOTIFICATION_MAX_RETRIES ?? '3', 10)),
+  emailNotificationRetryDelayMs: Math.max(0, Number.parseInt(process.env.EMAIL_NOTIFICATION_RETRY_DELAY_MS ?? '1000', 10)),
   emailEnabled: String(process.env.EMAIL_NOTIFICATIONS_ENABLED ?? 'true').toLowerCase() === 'true'
     && Boolean(process.env.RESEND_API_KEY)
     && Boolean(process.env.RESEND_FROM_EMAIL),
