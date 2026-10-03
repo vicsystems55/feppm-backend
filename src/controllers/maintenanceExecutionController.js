@@ -3,6 +3,7 @@ import { maintenanceScope, maintenanceWorkOrderWhere } from '../services/mainten
 import { normalizeTicketAttachments } from '../services/ticketAttachmentService.js';
 import { userHasRole } from '../services/userAccessService.js';
 import { resolveWorkOrderTransition } from '../services/workOrderWorkflowService.js';
+import { notifyWorkOrderAssigned } from '../services/workOrderNotificationService.js';
 
 const personSelect = { id: true, firstName: true, lastName: true, email: true, phone: true };
 const evidenceCategories = ['ARRIVAL', 'BEFORE_REPAIR', 'DURING_REPAIR', 'AFTER_REPAIR', 'PART_USED', 'OTHER'];
@@ -96,12 +97,11 @@ export async function submitWorkOrderForApproval(request, response) {
 
 export async function approveWorkOrder(request, response) {
   const workOrder = await requireWorkOrder(request.params.workOrderId, request.authUser);
-  const nextStatus = resolveWorkOrderTransition('approve', workOrder.status, { hasAssignment: Boolean(workOrder.assignedTechnicianId || workOrder.vendorContractId) });
+  const nextStatus = resolveWorkOrderTransition('approve', workOrder.status);
   const now = new Date();
   const updated = await prisma.$transaction(async (transaction) => {
     await activity(transaction, workOrder, request.authUser.id, 'APPROVED', nextStatus, request.body?.note);
-    const result = await transaction.maintenanceWorkOrder.update({ where: { id: workOrder.id }, data: { status: nextStatus, approvedById: request.authUser.id, approvedAt: now, approvalNote: clean(request.body?.note, 10000) || null, ...(nextStatus === 'ASSIGNED' ? { assignedAt: now } : {}) }, include: maintenanceExecutionInclude });
-    if (nextStatus === 'ASSIGNED' && workOrder.assignedTechnicianId) await transaction.technicianProfile.update({ where: { id: workOrder.assignedTechnicianId }, data: { availabilityStatus: 'ASSIGNED' } });
+    const result = await transaction.maintenanceWorkOrder.update({ where: { id: workOrder.id }, data: { status: nextStatus, approvedById: request.authUser.id, approvedAt: now, approvalNote: clean(request.body?.note, 10000) || null }, include: maintenanceExecutionInclude });
     return result;
   });
   response.json({ success: true, message: `${workOrder.workOrderNumber} approved.`, data: { workOrder: updated } });
@@ -125,13 +125,20 @@ export async function assignWorkOrder(request, response) {
   }
   const previousTechnicianId = workOrder.assignedTechnicianId;
   const now = new Date();
+  const plannedStartAt = dateValue(request.body?.plannedStartAt) ?? workOrder.plannedStartAt;
+  const plannedEndAt = dateValue(request.body?.plannedEndAt) ?? workOrder.plannedEndAt;
+  if (!plannedStartAt) throw httpError(400, 'Set a planned start date and time before assigning this work order.');
+  if (plannedEndAt && plannedEndAt <= plannedStartAt) throw httpError(400, 'Planned completion must be later than the planned start.');
   const updated = await prisma.$transaction(async (transaction) => {
     await activity(transaction, workOrder, request.authUser.id, 'ASSIGNED', nextStatus, request.body?.note, { assignedTechnicianId, vendorContractId });
-    const result = await transaction.maintenanceWorkOrder.update({ where: { id: workOrder.id }, data: { status: nextStatus, assignedTechnicianId, vendorContractId, assignedAt: now, plannedStartAt: dateValue(request.body?.plannedStartAt) ?? workOrder.plannedStartAt, plannedEndAt: dateValue(request.body?.plannedEndAt) ?? workOrder.plannedEndAt }, include: maintenanceExecutionInclude });
+    const result = await transaction.maintenanceWorkOrder.update({ where: { id: workOrder.id }, data: { status: nextStatus, assignedTechnicianId, vendorContractId, assignedAt: now, acceptedAt: null, plannedStartAt, plannedEndAt }, include: maintenanceExecutionInclude });
     if (assignedTechnicianId) await transaction.technicianProfile.update({ where: { id: assignedTechnicianId }, data: { availabilityStatus: 'ASSIGNED' } });
     return result;
   });
   if (previousTechnicianId && previousTechnicianId !== assignedTechnicianId) await releaseTechnicianIfIdle(previousTechnicianId);
+  if (assignedTechnicianId && (workOrder.status === 'APPROVED' || assignedTechnicianId !== previousTechnicianId)) {
+    void notifyWorkOrderAssigned(workOrder.id, request.authUser.id);
+  }
   response.json({ success: true, message: `${workOrder.workOrderNumber} assignment updated.`, data: { workOrder: updated } });
 }
 

@@ -12,7 +12,7 @@ export const WORK_ORDER_TRANSITIONS = Object.freeze({
   cancel: { from: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'ASSIGNED', 'ACCEPTED'], to: 'CANCELLED' },
 });
 
-export function resolveWorkOrderTransition(action, currentStatus, { hasAssignment = false } = {}) {
+export function resolveWorkOrderTransition(action, currentStatus) {
   const normalizedAction = String(action ?? '').trim().toLowerCase();
   const transition = WORK_ORDER_TRANSITIONS[normalizedAction];
   if (!transition || !transition.from.includes(currentStatus)) {
@@ -20,7 +20,6 @@ export function resolveWorkOrderTransition(action, currentStatus, { hasAssignmen
     error.status = 409;
     throw error;
   }
-  if (normalizedAction === 'approve' && hasAssignment) return 'ASSIGNED';
   return transition.to;
 }
 

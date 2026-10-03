@@ -6,7 +6,6 @@ import { resolveWorkOrderTransition } from '../src/services/workOrderWorkflowSer
 test('work orders follow the controlled approval and field lifecycle', () => {
   assert.equal(resolveWorkOrderTransition('submit', 'DRAFT'), 'PENDING_APPROVAL');
   assert.equal(resolveWorkOrderTransition('approve', 'PENDING_APPROVAL'), 'APPROVED');
-  assert.equal(resolveWorkOrderTransition('approve', 'PENDING_APPROVAL', { hasAssignment: true }), 'ASSIGNED');
   assert.equal(resolveWorkOrderTransition('assign', 'APPROVED'), 'ASSIGNED');
   assert.equal(resolveWorkOrderTransition('accept', 'ASSIGNED'), 'ACCEPTED');
   assert.equal(resolveWorkOrderTransition('start', 'ACCEPTED'), 'IN_PROGRESS');
@@ -14,6 +13,14 @@ test('work orders follow the controlled approval and field lifecycle', () => {
   assert.equal(resolveWorkOrderTransition('resume', 'AWAITING_PARTS'), 'IN_PROGRESS');
   assert.equal(resolveWorkOrderTransition('submit_completion', 'IN_PROGRESS'), 'AWAITING_VERIFICATION');
   assert.equal(resolveWorkOrderTransition('verify', 'AWAITING_VERIFICATION'), 'COMPLETED');
+});
+
+test('approval and assignment remain separate lifecycle decisions', () => {
+  assert.equal(resolveWorkOrderTransition('approve', 'PENDING_APPROVAL'), 'APPROVED');
+  assert.throws(
+    () => resolveWorkOrderTransition('accept', 'APPROVED'),
+    /cannot perform accept while approved/i,
+  );
 });
 
 test('invalid work-order jumps are rejected', () => {

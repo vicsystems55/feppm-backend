@@ -155,6 +155,11 @@ export async function createResourceRequest(request, response) {
   const resourceRequest = await prisma.$transaction(async (transaction) => {
     const created = await transaction.resourceRequest.create({ data: { requestNumber, organizationId: workshop.organizationId, workshopId: workshop.id, workOrderId: workOrder.id, requestedById: request.authUser.id, urgency, purpose, items: { create: items } } });
     await transaction.resourceRequestActivity.create({ data: { resourceRequestId: created.id, actorId: request.authUser.id, action: 'REQUEST_SUBMITTED', toStatus: 'SUBMITTED', note: purpose, metadata: { itemCount: items.length } } });
+    if (workOrder.status === 'IN_PROGRESS') {
+      await transaction.maintenanceWorkOrder.update({ where: { id: workOrder.id }, data: { status: 'AWAITING_PARTS' } });
+      await transaction.maintenanceWorkOrderActivity.create({ data: { workOrderId: workOrder.id, actorId: request.authUser.id, action: 'RESOURCES_REQUESTED', fromStatus: 'IN_PROGRESS', toStatus: 'AWAITING_PARTS', note: purpose, metadata: { resourceRequestId: created.id, requestNumber } } });
+      await transaction.maintenanceTicket.update({ where: { id: workOrder.ticketId }, data: { status: 'AWAITING_PARTS' } });
+    }
     return created;
   });
   response.status(201).json({ success: true, message: `Resource request ${requestNumber} submitted.`, data: { request: serializeRequest(await accessibleRequest(resourceRequest.id, request.authUser)) } });

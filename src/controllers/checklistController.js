@@ -40,6 +40,33 @@ function periodBounds(frequency, now = new Date()) {
   return { start, end };
 }
 
+function monthBounds(value) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(value ?? ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  if (year < 2020 || year > 2100) return null;
+  const start = new Date(year, Number(match[2]) - 1, 1);
+  const end = new Date(year, Number(match[2]), 1);
+  return { start, end };
+}
+
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function weeklyCalendarBounds(month) {
+  const start = new Date(month.start);
+  const startDay = start.getDay() || 7;
+  start.setDate(start.getDate() - startDay + 1);
+
+  const lastDay = new Date(month.end);
+  lastDay.setDate(lastDay.getDate() - 1);
+  const end = new Date(lastDay);
+  const lastWeekday = end.getDay() || 7;
+  end.setDate(end.getDate() + (8 - lastWeekday));
+  return { start, end };
+}
+
 function validateItems(items) {
   if (!Array.isArray(items) || !items.length) throw new Error('Add at least one checklist question.');
   return items.map((item, index) => {
@@ -269,10 +296,235 @@ export async function ensureManagerTasks(user, frequency) {
   }
 }
 
+async function ensureDailyCalendarTasks(user, start, end) {
+  const facilityId = user.facility?.id;
+  if (!facilityId) return;
+  const facility = await prisma.facility.findUnique({ where: { id: facilityId }, select: { managerUserId: true } });
+  if (facility?.managerUserId && facility.managerUserId !== user.id) return;
+
+  const schedules = await prisma.maintenanceSchedule.findMany({
+    where: {
+      active: true,
+      frequencyType: 'DAILY',
+      startDate: { lt: end },
+      equipment: { facilityId, status: 'ACTIVE' },
+      checklistTemplate: { status: 'ACTIVE' },
+    },
+    include: { equipment: { select: { facilityId: true } } },
+  });
+  if (!schedules.length) return;
+
+  const scheduleIds = schedules.map(({ id }) => id);
+  const existing = await prisma.maintenanceTask.findMany({
+    where: { maintenanceScheduleId: { in: scheduleIds }, scheduledAt: { gte: start, lt: end } },
+    select: { maintenanceScheduleId: true, scheduledAt: true },
+  });
+  const existingKeys = new Set(existing.map((task) => `${task.maintenanceScheduleId}:${localDateKey(task.scheduledAt)}`));
+  const today = periodBounds('DAILY').start;
+  const generationEnd = end < new Date(today.getTime() + 24 * 60 * 60 * 1000)
+    ? end
+    : new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const pendingCreates = [];
+
+  for (const schedule of schedules) {
+    for (const cursor = new Date(start); cursor < generationEnd; cursor.setDate(cursor.getDate() + 1)) {
+      const scheduledAt = new Date(cursor);
+      const dueAt = new Date(scheduledAt);
+      dueAt.setDate(dueAt.getDate() + 1);
+      if (schedule.startDate >= dueAt) continue;
+      if (existingKeys.has(`${schedule.id}:${localDateKey(scheduledAt)}`)) continue;
+      pendingCreates.push({
+        maintenanceScheduleId: schedule.id,
+        equipmentId: schedule.equipmentId,
+        facilityId: schedule.equipment.facilityId,
+        assignedUserId: user.id,
+        scheduledAt,
+        dueAt,
+        overdueAt: dueAt,
+        status: dueAt <= today ? 'MISSED' : 'DUE',
+      });
+    }
+  }
+
+  const operations = [];
+  if (pendingCreates.length) operations.push(prisma.maintenanceTask.createMany({ data: pendingCreates }));
+  operations.push(prisma.maintenanceTask.updateMany({
+    where: {
+      maintenanceScheduleId: { in: scheduleIds },
+      scheduledAt: { gte: start, lt: today < end ? today : end },
+      status: { in: ['UPCOMING', 'DUE', 'OVERDUE'] },
+    },
+    data: { status: 'MISSED' },
+  }));
+  operations.push(prisma.maintenanceTask.updateMany({
+    where: {
+      maintenanceScheduleId: { in: scheduleIds },
+      scheduledAt: { gte: start, lt: end },
+      assignedUserId: { not: user.id },
+      status: { notIn: ['COMPLETED_ON_TIME', 'COMPLETED_LATE'] },
+    },
+    data: { assignedUserId: user.id },
+  }));
+  await prisma.$transaction(operations);
+}
+
+async function ensureWeeklyCalendarTasks(user, start, end) {
+  const facilityId = user.facility?.id;
+  if (!facilityId) return;
+  const facility = await prisma.facility.findUnique({ where: { id: facilityId }, select: { managerUserId: true } });
+  if (facility?.managerUserId && facility.managerUserId !== user.id) return;
+
+  const schedules = await prisma.maintenanceSchedule.findMany({
+    where: {
+      active: true,
+      frequencyType: 'WEEKLY',
+      startDate: { lt: end },
+      equipment: { facilityId, status: 'ACTIVE' },
+      checklistTemplate: { status: 'ACTIVE' },
+    },
+    include: { equipment: { select: { facilityId: true } } },
+  });
+  if (!schedules.length) return;
+
+  const scheduleIds = schedules.map(({ id }) => id);
+  const existing = await prisma.maintenanceTask.findMany({
+    where: { maintenanceScheduleId: { in: scheduleIds }, scheduledAt: { gte: start, lt: end } },
+    select: { maintenanceScheduleId: true, scheduledAt: true },
+  });
+  const existingKeys = new Set(existing.map((task) => `${task.maintenanceScheduleId}:${localDateKey(task.scheduledAt)}`));
+  const currentWeekStart = periodBounds('WEEKLY').start;
+  const currentWeekEnd = new Date(currentWeekStart);
+  currentWeekEnd.setDate(currentWeekEnd.getDate() + 7);
+  const generationEnd = end < currentWeekEnd ? end : currentWeekEnd;
+  const pendingCreates = [];
+
+  for (const schedule of schedules) {
+    for (const cursor = new Date(start); cursor < generationEnd; cursor.setDate(cursor.getDate() + 7)) {
+      const scheduledAt = new Date(cursor);
+      const dueAt = new Date(scheduledAt);
+      dueAt.setDate(dueAt.getDate() + 7);
+      if (schedule.startDate >= dueAt) continue;
+      if (existingKeys.has(`${schedule.id}:${localDateKey(scheduledAt)}`)) continue;
+      pendingCreates.push({
+        maintenanceScheduleId: schedule.id,
+        equipmentId: schedule.equipmentId,
+        facilityId: schedule.equipment.facilityId,
+        assignedUserId: user.id,
+        scheduledAt,
+        dueAt,
+        overdueAt: dueAt,
+        status: dueAt <= currentWeekStart ? 'MISSED' : 'DUE',
+      });
+    }
+  }
+
+  const operations = [];
+  if (pendingCreates.length) operations.push(prisma.maintenanceTask.createMany({ data: pendingCreates }));
+  operations.push(prisma.maintenanceTask.updateMany({
+    where: {
+      maintenanceScheduleId: { in: scheduleIds },
+      scheduledAt: { gte: start, lt: currentWeekStart < end ? currentWeekStart : end },
+      status: { in: ['UPCOMING', 'DUE', 'OVERDUE'] },
+    },
+    data: { status: 'MISSED' },
+  }));
+  operations.push(prisma.maintenanceTask.updateMany({
+    where: {
+      maintenanceScheduleId: { in: scheduleIds },
+      scheduledAt: { gte: start, lt: end },
+      assignedUserId: { not: user.id },
+      status: { notIn: ['COMPLETED_ON_TIME', 'COMPLETED_LATE'] },
+    },
+    data: { assignedUserId: user.id },
+  }));
+  await prisma.$transaction(operations);
+}
+
+async function ensureMonthlyCalendarTasks(user, start, end) {
+  const facilityId = user.facility?.id;
+  if (!facilityId) return;
+  const facility = await prisma.facility.findUnique({ where: { id: facilityId }, select: { managerUserId: true } });
+  if (facility?.managerUserId && facility.managerUserId !== user.id) return;
+
+  const schedules = await prisma.maintenanceSchedule.findMany({
+    where: {
+      active: true,
+      frequencyType: 'MONTHLY',
+      startDate: { lt: end },
+      equipment: { facilityId, status: 'ACTIVE' },
+      checklistTemplate: { status: 'ACTIVE' },
+    },
+    include: { equipment: { select: { facilityId: true } } },
+  });
+  if (!schedules.length) return;
+
+  const scheduleIds = schedules.map(({ id }) => id);
+  const existing = await prisma.maintenanceTask.findMany({
+    where: { maintenanceScheduleId: { in: scheduleIds }, scheduledAt: { gte: start, lt: end } },
+    select: { maintenanceScheduleId: true, scheduledAt: true },
+  });
+  const existingKeys = new Set(existing.map((task) => `${task.maintenanceScheduleId}:${localDateKey(task.scheduledAt)}`));
+  const currentMonthStart = periodBounds('MONTHLY').start;
+  const currentMonthEnd = new Date(currentMonthStart);
+  currentMonthEnd.setMonth(currentMonthEnd.getMonth() + 1);
+  const pendingCreates = [];
+
+  if (start < currentMonthEnd) {
+    for (const schedule of schedules) {
+      const scheduledAt = new Date(start);
+      const dueAt = new Date(end);
+      if (schedule.startDate >= dueAt) continue;
+      if (existingKeys.has(`${schedule.id}:${localDateKey(scheduledAt)}`)) continue;
+      pendingCreates.push({
+        maintenanceScheduleId: schedule.id,
+        equipmentId: schedule.equipmentId,
+        facilityId: schedule.equipment.facilityId,
+        assignedUserId: user.id,
+        scheduledAt,
+        dueAt,
+        overdueAt: dueAt,
+        status: dueAt <= currentMonthStart ? 'MISSED' : 'DUE',
+      });
+    }
+  }
+
+  const operations = [];
+  if (pendingCreates.length) operations.push(prisma.maintenanceTask.createMany({ data: pendingCreates }));
+  if (end <= currentMonthStart) {
+    operations.push(prisma.maintenanceTask.updateMany({
+      where: {
+        maintenanceScheduleId: { in: scheduleIds },
+        scheduledAt: { gte: start, lt: end },
+        status: { in: ['UPCOMING', 'DUE', 'OVERDUE'] },
+      },
+      data: { status: 'MISSED' },
+    }));
+  }
+  operations.push(prisma.maintenanceTask.updateMany({
+    where: {
+      maintenanceScheduleId: { in: scheduleIds },
+      scheduledAt: { gte: start, lt: end },
+      assignedUserId: { not: user.id },
+      status: { notIn: ['COMPLETED_ON_TIME', 'COMPLETED_LATE'] },
+    },
+    data: { assignedUserId: user.id },
+  }));
+  await prisma.$transaction(operations);
+}
+
 export async function listMyChecklistTasks(request, response) {
   const frequency = frequencies.has(request.query.frequency) ? request.query.frequency : 'DAILY';
-  await ensureManagerTasks(request.authUser, frequency);
-  const { start, end } = periodBounds(frequency);
+  const supportsCalendarMonth = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(frequency);
+  const requestedMonth = supportsCalendarMonth ? monthBounds(request.query.month) : null;
+  const requestedPeriod = frequency === 'WEEKLY' && requestedMonth ? weeklyCalendarBounds(requestedMonth) : requestedMonth;
+  const { start, end } = requestedPeriod ?? periodBounds(frequency);
+  if (supportsCalendarMonth && request.query.month && !requestedMonth) {
+    return response.status(400).json({ success: false, message: 'Month must use YYYY-MM format.' });
+  }
+  if (frequency === 'DAILY' && requestedMonth) await ensureDailyCalendarTasks(request.authUser, start, end);
+  else if (frequency === 'WEEKLY' && requestedMonth) await ensureWeeklyCalendarTasks(request.authUser, start, end);
+  else if (frequency === 'MONTHLY' && requestedMonth) await ensureMonthlyCalendarTasks(request.authUser, start, end);
+  else await ensureManagerTasks(request.authUser, frequency);
   const tasks = await prisma.maintenanceTask.findMany({
     where: { facilityId: request.authUser.facility?.id ?? '__none__', assignedUserId: request.authUser.id, scheduledAt: { gte: start, lt: end }, maintenanceSchedule: { frequencyType: frequency } },
     include: {

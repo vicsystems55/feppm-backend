@@ -70,11 +70,20 @@ export async function maintenanceWorkOrderWhere(user) {
   const scope = await maintenanceScope(user);
   if (userHasRole(user, 'SUPER_ADMIN')) return {};
   if (userHasRole(user, 'VENDOR_TECHNICIAN')) {
-    return { organizationId: user.organization.id, assignedTechnicianId: scope.technicianProfileId ?? '__none__', vendorContract: { is: { vendorId: scope.vendorId } } };
+    return {
+      organizationId: user.organization.id,
+      assignedTechnicianId: scope.technicianProfileId ?? '__none__',
+      vendorContract: { is: { vendorId: scope.vendorId } },
+      status: { in: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION', 'COMPLETED'] },
+    };
   }
   if (userHasRole(user, 'VENDOR_ADMIN')) return { organizationId: user.organization.id, vendorContract: { is: { vendorId: scope.vendorId } } };
   if (userHasRole(user, 'TECHNICIAN')) {
-    return { organizationId: user.organization.id, assignedTechnicianId: scope.technicianProfileId ?? '__none__' };
+    return {
+      organizationId: user.organization.id,
+      assignedTechnicianId: scope.technicianProfileId ?? '__none__',
+      status: { in: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'AWAITING_PARTS', 'AWAITING_VERIFICATION', 'COMPLETED'] },
+    };
   }
   if (scope.national) return { organizationId: user.organization.id };
   return {

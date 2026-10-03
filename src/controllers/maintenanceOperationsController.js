@@ -194,32 +194,14 @@ export async function createWorkOrderFromRequest(request, response) {
   if (!ticket.triage) throw httpError(409, 'Complete technical triage before creating a work order.');
   const title = clean(request.body?.title, 160) || ticket.title;
   const description = clean(request.body?.description, 10000) || ticket.triage.recommendedAction || ticket.faultDescription;
-  const assignedTechnicianId = clean(request.body?.assignedTechnicianId, 191) || null;
-  const vendorContractId = clean(request.body?.vendorContractId, 191) || null;
-  if (assignedTechnicianId && vendorContractId) throw httpError(400, 'Assign either an internal technician or a vendor contract, not both.');
-  if (assignedTechnicianId) {
-    const scope = await maintenanceScope(request.authUser);
-    const technician = await prisma.technicianProfile.findFirst({
-      where: {
-        id: assignedTechnicianId,
-        organizationId: ticket.organizationId,
-        status: 'ACTIVE',
-        ...(!scope.national && !userHasRole(request.authUser, 'SUPER_ADMIN')
-          ? { OR: [{ baseAdministrativeUnit: { is: scope.administrativeUnitWhere } }, { baseAdministrativeUnitId: null }] }
-          : {}),
-      },
-    });
-    if (!technician) throw httpError(400, 'The selected technician is not active in this organization.');
-  }
-  if (vendorContractId) {
-    const contract = await prisma.vendorContract.findFirst({ where: { id: vendorContractId, organizationId: ticket.organizationId, status: 'ACTIVE', startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }], facilities: ticket.facilityId ? { some: { facilityId: ticket.facilityId } } : undefined, equipmentTypes: ticket.equipment?.equipmentType?.id ? { some: { equipmentTypeId: ticket.equipment.equipmentType.id } } : undefined } });
-    if (!contract) throw httpError(400, 'The selected vendor contract does not cover this request.');
+  if (request.body?.assignedTechnicianId || request.body?.vendorContractId) {
+    throw httpError(409, 'Create and approve the work order before assigning a technician or vendor.');
   }
   const status = 'DRAFT';
   const workOrderNumber = await nextWorkOrderNumber();
   const [workOrder] = await prisma.$transaction([
-    prisma.maintenanceWorkOrder.create({ data: { workOrderNumber, ticketId: ticket.id, triageId: ticket.triage.id, organizationId: ticket.organizationId, administrativeUnitId: ticket.administrativeUnitId, facilityId: ticket.facilityId, equipmentId: ticket.equipmentId, assignedTechnicianId, vendorContractId, createdById: request.authUser.id, title, description, priority: ticket.priority, status, plannedStartAt: dateValue(request.body?.plannedStartAt), plannedEndAt: dateValue(request.body?.plannedEndAt), estimatedCost: request.body?.estimatedCost || null }, include: workOrderInclude }),
-    prisma.ticketActivity.create({ data: { ticketId: ticket.id, userId: request.authUser.id, action: 'WORK_ORDER_CREATED', comment: `${workOrderNumber} created from maintenance triage.`, metadata: { workOrderNumber, assignedTechnicianId, vendorContractId } } }),
+    prisma.maintenanceWorkOrder.create({ data: { workOrderNumber, ticketId: ticket.id, triageId: ticket.triage.id, organizationId: ticket.organizationId, administrativeUnitId: ticket.administrativeUnitId, facilityId: ticket.facilityId, equipmentId: ticket.equipmentId, createdById: request.authUser.id, title, description, priority: ticket.priority, status, plannedStartAt: dateValue(request.body?.plannedStartAt), plannedEndAt: dateValue(request.body?.plannedEndAt), estimatedCost: request.body?.estimatedCost || null }, include: workOrderInclude }),
+    prisma.ticketActivity.create({ data: { ticketId: ticket.id, userId: request.authUser.id, action: 'WORK_ORDER_CREATED', comment: `${workOrderNumber} created from maintenance triage.`, metadata: { workOrderNumber } } }),
   ]);
   response.status(201).json({ success: true, message: `${workOrderNumber} created.`, data: { workOrder } });
 }
