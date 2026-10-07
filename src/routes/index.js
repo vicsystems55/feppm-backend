@@ -14,6 +14,7 @@ import uploadRouter from './uploadRoutes.js';
 import workshopResourceRouter from './workshopResourceRoutes.js';
 import resourceRequestRouter from './resourceRequestRoutes.js';
 import systemSettingsRouter from './systemSettingsRoutes.js';
+import executiveReportRouter from './executiveReportRoutes.js';
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use('/uploads', uploadRouter);
 router.use('/workshop-resources', workshopResourceRouter);
 router.use('/resource-requests', resourceRequestRouter);
 router.use('/system-settings', systemSettingsRouter);
+router.use('/executive-reports', executiveReportRouter);
 
 export default router;

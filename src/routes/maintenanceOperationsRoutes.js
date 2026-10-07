@@ -31,6 +31,11 @@ import {
   updateWorkOrderFieldReport,
   verifyWorkOrderCompletion,
 } from '../controllers/maintenanceExecutionController.js';
+import {
+  listMonthlyRequisitions,
+  reviewMonthlyRequisition,
+  submitMonthlyRequisition,
+} from '../controllers/workOrderRequisitionController.js';
 
 const router = Router();
 router.use(authenticate, requirePermission('maintenance_operations.view'));
@@ -40,6 +45,9 @@ router.get('/requests/:ticketId', getMaintenanceRequest);
 router.put('/requests/:ticketId/triage', requirePermission('maintenance_requests.triage'), triageMaintenanceRequest);
 router.post('/requests/:ticketId/work-orders', requirePermission('work_orders.create'), createWorkOrderFromRequest);
 router.get('/work-orders', requirePermission('work_orders.view'), listMaintenanceWorkOrders);
+router.get('/monthly-requisitions', requirePermission('work_orders.view'), listMonthlyRequisitions);
+router.post('/monthly-requisitions', requirePermission('work_orders.create'), submitMonthlyRequisition);
+router.patch('/monthly-requisitions/:id/review', requirePermission('work_orders.verify'), reviewMonthlyRequisition);
 router.get('/work-orders/:workOrderId', requirePermission('work_orders.view'), getMaintenanceWorkOrder);
 router.post('/work-orders/:workOrderId/submit', requirePermission('work_orders.create'), submitWorkOrderForApproval);
 router.post('/work-orders/:workOrderId/approve', requirePermission('work_orders.verify'), approveWorkOrder);

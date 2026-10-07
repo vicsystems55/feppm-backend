@@ -408,6 +408,21 @@ enum WorkOrderPartSource {
   OTHER
 }
 
+enum WorkOrderRequisitionStatus {
+  DRAFT
+  SUBMITTED
+  FUNDED
+  DEFERRED
+  CLOSED
+}
+
+enum WorkOrderFundingStatus {
+  PENDING
+  APPROVED
+  DEFERRED
+  REJECTED
+}
+
 model Country {
   id                  String               @id @default(cuid())
   name                String
@@ -422,13 +437,13 @@ model Country {
 }
 
 model Organization {
-  id                    String                 @id @default(cuid())
+  id                    String                            @id @default(cuid())
   countryId             String
   name                  String
   code                  String?
   type                  OrganizationType
-  status                RecordStatus           @default(ACTIVE)
-  country               Country                @relation(fields: [countryId], references: [id])
+  status                RecordStatus                      @default(ACTIVE)
+  country               Country                           @relation(fields: [countryId], references: [id])
   users                 User[]
   administrativeUnits   AdministrativeUnit[]
   facilities            Facility[]
@@ -439,10 +454,11 @@ model Organization {
   maintenanceWorkshops  MaintenanceWorkshop[]
   spareParts            SparePart[]
   resourceRequests      ResourceRequest[]
+  requisitionItems      MonthlyWorkOrderRequisitionItem[]
   simulationSessions    SimulationSession[]
   pilots                PilotProject[]
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                          @default(now())
+  updatedAt             DateTime                          @updatedAt
 
   @@unique([countryId, name])
   @@index([countryId, status])
@@ -1522,52 +1538,53 @@ model MaintenanceTriage {
 }
 
 model MaintenanceWorkOrder {
-  id                    String                         @id @default(cuid())
-  workOrderNumber       String                         @unique
-  ticketId              String
-  triageId              String?
-  organizationId        String
-  administrativeUnitId  String?
-  facilityId            String?
-  equipmentId           String?
-  assignedTechnicianId  String?
-  vendorContractId      String?
-  createdById           String
-  approvedById          String?
-  title                 String
-  description           String                         @db.Text
-  priority              Int                            @default(3)
-  status                MaintenanceWorkOrderStatus     @default(DRAFT)
-  plannedStartAt        DateTime?
-  plannedEndAt          DateTime?
-  estimatedCost         Decimal?                       @db.Decimal(14, 2)
-  actualCost            Decimal?                       @db.Decimal(14, 2)
-  approvalNote          String?                        @db.Text
-  verificationNote      String?                        @db.Text
-  approvedAt            DateTime?
-  assignedAt            DateTime?
-  acceptedAt            DateTime?
-  startedAt             DateTime?
-  completionSubmittedAt DateTime?
-  completedAt           DateTime?
-  verifiedAt            DateTime?
-  ticket                MaintenanceTicket              @relation(fields: [ticketId], references: [id])
-  triage                MaintenanceTriage?             @relation(fields: [triageId], references: [id])
-  organization          Organization                   @relation(fields: [organizationId], references: [id])
-  administrativeUnit    AdministrativeUnit?            @relation(fields: [administrativeUnitId], references: [id])
-  facility              Facility?                      @relation(fields: [facilityId], references: [id])
-  equipment             Equipment?                     @relation(fields: [equipmentId], references: [id])
-  assignedTechnician    TechnicianProfile?             @relation(fields: [assignedTechnicianId], references: [id])
-  vendorContract        VendorContract?                @relation(fields: [vendorContractId], references: [id])
-  createdBy             User                           @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
-  approvedBy            User?                          @relation("WorkOrderApprovedBy", fields: [approvedById], references: [id])
-  activities            MaintenanceWorkOrderActivity[]
-  fieldReport           WorkOrderFieldReport?
-  partsUsed             WorkOrderPartUsage[]
-  evidence              WorkOrderEvidence[]
-  resourceRequests      ResourceRequest[]
-  createdAt             DateTime                       @default(now())
-  updatedAt             DateTime                       @updatedAt
+  id                               String                            @id @default(cuid())
+  workOrderNumber                  String                            @unique
+  ticketId                         String
+  triageId                         String?
+  organizationId                   String
+  administrativeUnitId             String?
+  facilityId                       String?
+  equipmentId                      String?
+  assignedTechnicianId             String?
+  vendorContractId                 String?
+  createdById                      String
+  approvedById                     String?
+  title                            String
+  description                      String                            @db.Text
+  priority                         Int                               @default(3)
+  status                           MaintenanceWorkOrderStatus        @default(DRAFT)
+  plannedStartAt                   DateTime?
+  plannedEndAt                     DateTime?
+  estimatedCost                    Decimal?                          @db.Decimal(14, 2)
+  actualCost                       Decimal?                          @db.Decimal(14, 2)
+  approvalNote                     String?                           @db.Text
+  verificationNote                 String?                           @db.Text
+  approvedAt                       DateTime?
+  assignedAt                       DateTime?
+  acceptedAt                       DateTime?
+  startedAt                        DateTime?
+  completionSubmittedAt            DateTime?
+  completedAt                      DateTime?
+  verifiedAt                       DateTime?
+  ticket                           MaintenanceTicket                 @relation(fields: [ticketId], references: [id])
+  triage                           MaintenanceTriage?                @relation(fields: [triageId], references: [id])
+  organization                     Organization                      @relation(fields: [organizationId], references: [id])
+  administrativeUnit               AdministrativeUnit?               @relation(fields: [administrativeUnitId], references: [id])
+  facility                         Facility?                         @relation(fields: [facilityId], references: [id])
+  equipment                        Equipment?                        @relation(fields: [equipmentId], references: [id])
+  assignedTechnician               TechnicianProfile?                @relation(fields: [assignedTechnicianId], references: [id])
+  vendorContract                   VendorContract?                   @relation(fields: [vendorContractId], references: [id])
+  createdBy                        User                              @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
+  approvedBy                       User?                             @relation("WorkOrderApprovedBy", fields: [approvedById], references: [id])
+  activities                       MaintenanceWorkOrderActivity[]
+  fieldReport                      WorkOrderFieldReport?
+  partsUsed                        WorkOrderPartUsage[]
+  evidence                         WorkOrderEvidence[]
+  resourceRequests                 ResourceRequest[]
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
+  monthlyWorkOrderRequisitionItems MonthlyWorkOrderRequisitionItem[]
 
   @@index([organizationId, status])
   @@index([administrativeUnitId, status])
@@ -1592,6 +1609,50 @@ model MaintenanceWorkOrderActivity {
 
   @@index([workOrderId, createdAt])
   @@index([actorId, createdAt])
+}
+
+model MonthlyWorkOrderRequisition {
+  id                   String                            @id @default(cuid())
+  requisitionNumber    String                            @unique
+  organizationId       String
+  administrativeUnitId String?
+  workshopId           String?
+  periodMonth          DateTime
+  status               WorkOrderRequisitionStatus        @default(SUBMITTED)
+  notes                String?                           @db.Text
+  totalEstimatedCost   Decimal                           @default(0) @db.Decimal(14, 2)
+  submittedById        String
+  reviewedById         String?
+  submittedAt          DateTime                          @default(now())
+  reviewedAt           DateTime?
+  carriedFromId        String?
+  items                MonthlyWorkOrderRequisitionItem[]
+  createdAt            DateTime                          @default(now())
+  updatedAt            DateTime                          @updatedAt
+
+  @@index([organizationId, periodMonth, status])
+  @@index([administrativeUnitId, periodMonth])
+  @@index([workshopId, periodMonth])
+  @@index([submittedById, periodMonth])
+}
+
+model MonthlyWorkOrderRequisitionItem {
+  id             String                      @id @default(cuid())
+  requisitionId  String
+  workOrderId    String
+  estimatedCost  Decimal                     @db.Decimal(14, 2)
+  approvedAmount Decimal?                    @db.Decimal(14, 2)
+  fundingStatus  WorkOrderFundingStatus      @default(PENDING)
+  sourceItemId   String?
+  requisition    MonthlyWorkOrderRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  workOrder      MaintenanceWorkOrder        @relation(fields: [workOrderId], references: [id])
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  organization   Organization?               @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@unique([requisitionId, workOrderId])
+  @@index([workOrderId, fundingStatus])
 }
 
 model WorkOrderFieldReport {
