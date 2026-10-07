@@ -2239,3 +2239,11 @@ model SyncLog {
 
   @@index([userId, status])
 }
+
+model PlatformSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

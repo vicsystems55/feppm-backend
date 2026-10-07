@@ -13,6 +13,7 @@ import ticketRouter from './ticketRoutes.js';
 import uploadRouter from './uploadRoutes.js';
 import workshopResourceRouter from './workshopResourceRoutes.js';
 import resourceRequestRouter from './resourceRequestRoutes.js';
+import systemSettingsRouter from './systemSettingsRoutes.js';
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use('/tickets', ticketRouter);
 router.use('/uploads', uploadRouter);
 router.use('/workshop-resources', workshopResourceRouter);
 router.use('/resource-requests', resourceRequestRouter);
+router.use('/system-settings', systemSettingsRouter);
 
 export default router;
