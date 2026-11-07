@@ -30,7 +30,8 @@
     "migration:mysql-to-postgres": "node scripts/migrateMysqlToPostgres.js",
     "migration:trial": "node scripts/runLocalMigrationTrial.js",
     "supabase:check": "node scripts/checkSupabaseConnection.js",
-    "maintenance:verify-outbox": "node scripts/verifyMaintenanceOutbox.js"
+    "maintenance:verify-outbox": "node scripts/verifyMaintenanceOutbox.js",
+    "tasks:materialize": "node scripts/materializeChecklistTasks.js"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",
